@@ -189,7 +189,34 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        handleShareIntent(intent)
+        if (!handleDeepLink(intent)) {
+            handleShareIntent(intent)
+        }
+    }
+
+    /** Handles hermes://session/{session_id} deep links.
+     *
+     * Navigates the WebView to {serverUrl}/{session_id}, matching the Hermes
+     * WebUI session route contract (sessionRoute() in apps/desktop/src/app/routes.ts).
+     * Returns true if the intent was consumed, false if it should fall through.
+     */
+    private fun handleDeepLink(intent: Intent): Boolean {
+        val data = intent.data ?: return false
+        if (data.scheme != "hermes" || data.host != "session") return false
+        val sessionId = data.lastPathSegment?.takeIf { it.isNotBlank() } ?: return false
+        val serverUrl = viewModel.uiState.value.settings.serverUrl
+        if (serverUrl.isBlank()) {
+            Toast.makeText(this, "Configure a server URL in Settings first", Toast.LENGTH_LONG).show()
+            viewModel.openSettings()
+            return true
+        }
+        val sessionUrl = "${serverUrl.trimEnd('/')}/${Uri.encode(sessionId)}"
+        if (!UrlPolicy(viewModel.uiState.value.settings.allowedHosts).isAllowed(sessionUrl)) {
+            Toast.makeText(this, "Session URL is not allowlisted", Toast.LENGTH_LONG).show()
+            return true
+        }
+        webView.loadUrl(sessionUrl)
+        return true
     }
 
     @Composable

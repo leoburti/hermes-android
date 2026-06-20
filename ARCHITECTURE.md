@@ -10,7 +10,7 @@
 ## Layered design
 
 - `core/`: security policy primitives (URL and navigation decisions)
-- `data/`: local encrypted settings and persistence concerns
+- `data/`: local encrypted settings, persistence, and Hermes API client
 - `domain/`: intent parsing and validation rules
 - `ui/`: ViewModel state and Compose screens
 - `MainActivity`: Android platform boundary (WebView, intents, activity contracts)
@@ -25,6 +25,8 @@
 6. `MainViewModel` drives active surface, loading/error/offline/share UI state.
 7. Share intents are parsed in `domain`, staged in ViewModel, then pushed into WebView flow.
 8. Settings updates rewrite encrypted preferences and reload trusted hosts.
+9. On WebView load failure, `MainViewModel` probes `{serverUrl}/api/status` (Hermes WebUI public liveness endpoint) to distinguish "server is down" from a transient content/navigation error. This refines the `isOffline` state and the copy shown to the user in `WebShell`.
+10. `hermes://session/{id}` deep links are handled in `MainActivity.onNewIntent`, navigating the WebView to `{serverUrl}/{id}` — the Hermes WebUI session route contract (see `apps/desktop/src/app/routes.ts: sessionRoute()` in hermes-agent).
 
 ## Security model
 
@@ -36,8 +38,9 @@
 
 ## Extensibility points
 
-- Add deep-link route handling in `MainActivity.onNewIntent`.
-- Add push notification handlers that map to Hermes URLs/session IDs.
+- Add more deep-link hosts/paths in the `hermes://` scheme (see `AndroidManifest.xml` + `handleDeepLink` in `MainActivity`).
+- Add push notification handlers that map to Hermes URLs/session IDs via `hermes://session/{id}`.
 - Add biometric gate before `WebShell` composable rendering.
 - Add advanced native settings in `ui/settings` + `data/SettingsRepository`.
 - Add more drawer destinations for stable Hermes routes such as files, kanban, sessions, or status.
+- Extend `HermesApiClient` with authenticated calls (e.g. `/api/sessions`) once an API key storage strategy is decided.

@@ -55,7 +55,7 @@
 
 ### Platform-native wishlist
 
-- [ ] Deep links and verified app links to Hermes routes
+- [x] Deep links — `hermes://session/{id}` handled natively
 - [ ] Server profile list for multiple Hermes hosts
 - [ ] Optional biometric app lock before showing WebView
 - [ ] FCM push notification plumbing
@@ -73,7 +73,7 @@
 
 | ID | Priority | Status | Area | Task | Notes |
 |---|---|---|---|---|---|
-| A-005 | P1 | Todo | Deep links | Add deep-link intent filter and route mapping | Include allowlist and route-safety checks |
+| A-005 | P1 | Done | Deep links | Add deep-link intent filter and route mapping | `hermes://session/{id}` → `{serverUrl}/{id}` per WebUI route contract |
 | A-009 | P1 | Todo | Settings | Add server profile list | Needed before broader multi-host use |
 | A-007 | P1 | Todo | Security UX | Add optional biometric app lock gate | Feature-flagged in settings |
 | A-006 | P1 | Todo | Notifications | Add FCM plumbing, channels, and click routing | Requires infrastructure decision for push source |
@@ -105,6 +105,8 @@ Recommended next order:
 | BRAND-001 | 2026-06-20 | Branding | Renamed APK output to `hermes-android`; replaced placeholder icon with Hermes WebUI caduceus (vector + density PNGs); icon background aligned to WebUI dark `#1a1a1a` |
 | COMPAT-001 | 2026-06-20 | Android compatibility | Guarded share-intent parcelable parsing across pre- and post-Android 13 APIs |
 | A-014 | 2026-06-20 | Release | Finalized package ID and namespace as `com.hermeswebui.android` before first public release |
+| A-005 | 2026-06-20 | Deep links | Added `hermes://session/{id}` intent filter; navigates WebView to `{serverUrl}/{id}` per WebUI route contract |
+| API-001 | 2026-06-20 | API integration | Added `HermesApiClient` probing `/api/status` (public endpoint) on WebView errors to distinguish server-down from content errors |
 | BUG-001 | 2026-06-20 | UI | Fixed unreadable text by applying an explicit native color scheme and disabling WebView algorithmic darkening |
 | BUG-002 | 2026-06-20 | WebView | Fixed Hermes WebUI text/content visibility by injecting a measured viewport-height shim when Android WebView computes `100dvh` as `0px` |
 

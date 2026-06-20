@@ -1,12 +1,15 @@
 package com.hermeswebui.android.ui
 
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.hermeswebui.android.data.HermesApiClient
 import com.hermeswebui.android.data.SettingsRepository
 import com.hermeswebui.android.data.SharePayload
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
 
 class MainViewModel(
     private val settingsRepository: SettingsRepository,
@@ -45,6 +48,19 @@ class MainViewModel(
                 errorMessage = message,
                 isOffline = isOffline
             )
+        }
+        // If the device appears online but the page failed, probe /api/status to
+        // distinguish "server is down" from a transient content/navigation error.
+        // /api/status is the public liveness endpoint on Hermes WebUI; no auth needed.
+        if (!isOffline) {
+            val serverUrl = _uiState.value.settings.serverUrl
+            if (serverUrl.isNotBlank()) {
+                viewModelScope.launch {
+                    if (!HermesApiClient.isServerReachable(serverUrl)) {
+                        _uiState.update { it.copy(isOffline = true) }
+                    }
+                }
+            }
         }
     }
 
