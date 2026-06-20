@@ -30,6 +30,8 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.browser.customtabs.CustomTabColorSchemeParams
+import androidx.browser.customtabs.CustomTabsIntent
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
@@ -352,7 +354,7 @@ class MainActivity : ComponentActivity() {
                 override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
                     val target = request?.url?.toString() ?: return true
                     if (matchesConfiguredDashboardRoute(target)) {
-                        openDashboardInApp(target)
+                        openDashboardInCustomTab(target)
                         return true
                     }
                     return when (UrlPolicy(allowedHosts).navigationDecision(target)) {
@@ -538,7 +540,7 @@ class MainActivity : ComponentActivity() {
 
     private fun handleNewWindowUrl(url: String) {
         if (matchesConfiguredDashboardRoute(url)) {
-            openDashboardInApp(url)
+            openDashboardInCustomTab(url)
             return
         }
         when (UrlPolicy(allowedHosts).navigationDecision(url)) {
@@ -627,8 +629,25 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun openDashboardInApp(url: String) {
-        startActivity(DashboardActivity.createIntent(this, url))
+    private fun openDashboardInCustomTab(url: String) {
+        val colorParams = CustomTabColorSchemeParams.Builder()
+            .setToolbarColor(android.graphics.Color.rgb(13, 13, 26))
+            .build()
+        val customTabsIntent = CustomTabsIntent.Builder()
+            .setColorScheme(CustomTabsIntent.COLOR_SCHEME_DARK)
+            .setDefaultColorSchemeParams(colorParams)
+            .setShowTitle(false)
+            .setShareState(CustomTabsIntent.SHARE_STATE_OFF)
+            .setUrlBarHidingEnabled(true)
+            .build()
+        // Keep the browser-rendered dashboard out of MainActivity's singleTask stack.
+        customTabsIntent.intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+
+        try {
+            customTabsIntent.launchUrl(this, url.toUri())
+        } catch (_: ActivityNotFoundException) {
+            openInExternalBrowser(url)
+        }
     }
 
     private fun handleShareIntent(intent: Intent?) {

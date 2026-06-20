@@ -53,7 +53,7 @@ Requirements:
 - Android WebView compatibility fixes for Hermes WebUI viewport rendering
 - System-bar inset handling so WebView content and native controls avoid status and navigation bars
 - WebUI-owned navigation with Android seeding the WebUI Official Hermes Dashboard origin when needed
-- Official Hermes Dashboard links open in an app-owned dashboard WebView instead of the default browser
+- Official Hermes Dashboard links open in a Chrome Custom Tab with minimal browser UI instead of the full default browser
 - Deep link support: `hermes://session/{id}` navigates to Hermes sessions
 - Server health probing on WebView errors to distinguish server-down from content errors
 - First-run settings flow for the Hermes WebUI URL; the dashboard URL is managed by WebUI Settings > System after Android seeds it
@@ -125,7 +125,7 @@ Optional checks:
 
 | Color | Area | Files | Purpose |
 |---|---|---|---|
-| 🔵 | Platform boundary | `app/src/main/java/com/hermeswebui/android/MainActivity.kt`, `app/src/main/java/com/hermeswebui/android/DashboardActivity.kt` | Main Hermes WebUI host plus in-app Official Hermes Dashboard host, including navigation/intents and WebView lifecycle |
+| 🔵 | Platform boundary | `app/src/main/java/com/hermeswebui/android/MainActivity.kt` | Main Hermes WebUI host, Android intents, WebView lifecycle, and dashboard Custom Tab handoff |
 | 🟣 | Security | `app/src/main/java/com/hermeswebui/android/core/security/UrlPolicy.kt` | HTTPS and allowlist decisions |
 | 🟢 | Data | `app/src/main/java/com/hermeswebui/android/data/` | Encrypted app settings and staged share payloads |
 | 🟠 | Domain | `app/src/main/java/com/hermeswebui/android/domain/` | URL validation and Android share intent parsing |

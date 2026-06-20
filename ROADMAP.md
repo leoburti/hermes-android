@@ -14,7 +14,7 @@
 | Secure WebView shell | Done - HTTPS-only navigation, host allowlist, hardened defaults |
 | WebUI integration | Done - first-run WebUI URL setting, dashboard config seeding, session persistence, pull-to-refresh |
 | WebView compatibility | Done - disables forced darkening, patches Android viewport-unit collapse, and respects system-bar safe insets |
-| Official dashboard link | Done - Android seeds WebUI's Official Hermes Dashboard origin when WebUI has none, opens dashboard-origin requests in an app-owned dashboard WebView, and avoids persisting dashboard pages as startup state |
+| Official dashboard link | Done - Android seeds WebUI's Official Hermes Dashboard origin when WebUI has none, opens dashboard-origin requests in a Chrome Custom Tab with minimal browser UI, and avoids persisting dashboard pages as startup state |
 | Android sharing | Done - share-to-app intake for text and files |
 | Files | Done - WebView upload/download integration |
 | Local settings | Done - encrypted settings storage |
@@ -118,7 +118,7 @@ Recommended next order:
 | BUG-001 | 2026-06-20 | UI | Fixed unreadable text by applying an explicit native color scheme and disabling WebView algorithmic darkening |
 | BUG-002 | 2026-06-20 | WebView | Fixed Hermes WebUI text/content visibility by injecting a measured viewport-height shim when Android WebView computes `100dvh` as `0px` |
 | BUG-003 | 2026-06-20 | UI | Added safe-drawing system insets so WebView content and native controls do not overlap status or navigation bars |
-| BUG-004 | 2026-06-20 | Navigation | Fixed dashboard redirect/blue-screen recovery by normalizing stored dashboard URLs to their origin, opening dashboard-origin new-window requests in `DashboardActivity`, applying dashboard-scoped viewport compatibility, and preventing dashboard pages from becoming app startup state |
+| BUG-004 | 2026-06-20 | Navigation | Fixed dashboard redirect/blue-screen recovery by normalizing stored dashboard URLs to their origin, opening dashboard-origin new-window requests in Chrome Custom Tabs, and preventing dashboard pages from becoming app startup state |
 | BUILD-001 | 2026-06-20 | Tooling | Migrated AGP config to built-in Kotlin, removed legacy compatibility flags, and eliminated obsolete variant API plus dependency-constraints sync warnings |
 
 ---

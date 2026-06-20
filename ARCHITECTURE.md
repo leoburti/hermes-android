@@ -13,16 +13,16 @@
 - `data/`: local encrypted settings, persistence, and Hermes API client
 - `domain/`: intent parsing and validation rules
 - `ui/`: ViewModel state and Compose screens
-- `MainActivity` + `DashboardActivity`: Android platform boundaries (WebView hosts, intents, activity contracts)
+- `MainActivity`: Android platform boundary (WebView host, intents, activity contract, Custom Tabs dashboard handoff)
 
 ## Runtime flow
 
 1. App starts, loads encrypted WebUI settings and the stored/default dashboard origin URL (`SettingsRepository`).
 2. WebView boots with hardened configuration.
 3. The Compose root fills the full window background, then applies `WindowInsets.safeDrawing` around the WebView shell and native snackbar so Android 15 edge-to-edge enforcement does not put content under status or navigation bars.
-4. Android WebView compatibility shims run only on their owning surface: Hermes WebUI receives the WebUI viewport/config shim, while `DashboardActivity` receives only a dashboard-scoped viewport-height shim.
+4. Android WebView compatibility shims stay scoped to Hermes WebUI. The official dashboard is not rendered in an app WebView.
 5. On the Hermes WebUI route, Android seeds the WebUI `/api/dashboard/config` origin URL when WebUI has no dashboard URL and Android has one stored/defaulted. Dashboard URLs are normalized to their origin before Android stores or matches them. WebUI then owns rendering and behavior for the Official Hermes Dashboard link in its rail/sidebar.
-6. Official Hermes Dashboard links are treated as native secondary surfaces. Android handles WebView new-window requests and dashboard-origin navigations by launching `DashboardActivity`, an app-owned dashboard WebView with compact native chrome and dashboard-scoped viewport compatibility, instead of replacing the primary Hermes WebUI WebView or opening the default browser.
+6. Official Hermes Dashboard links are treated as secondary browser surfaces. Android handles WebView new-window requests and dashboard-origin navigations by launching a Chrome Custom Tab with title/share UI minimized, instead of replacing the primary Hermes WebUI WebView or opening the full default browser UI.
 7. Dashboard-origin pages are not saved as the app startup URL. If a dashboard URL is ever the last observed WebView URL, the next launch falls back to the configured Hermes WebUI URL.
 8. `UrlPolicy` enforces HTTPS + domain allowlist for every navigation.
 9. `MainViewModel` drives loading/error/offline/share UI state.
@@ -36,7 +36,7 @@
 - Trust boundary is the configured Hermes WebUI and dashboard URL host set.
 - In-app navigation remains inside trust boundary only.
 - Everything else is blocked or externalized.
-- `DashboardActivity` only keeps same-origin dashboard navigation in its WebView; other HTTPS links are externalized and non-HTTPS links are blocked.
+- The official dashboard is browser-rendered through Custom Tabs so Chrome handles dashboard compatibility, cookies, TLS, and same-origin navigation.
 - Cleartext disabled at network config level.
 - Sensitive app-side config is encrypted with Android Keystore-backed keys.
 
@@ -46,5 +46,5 @@
 - Add push notification handlers that map to Hermes URLs/session IDs via `hermes://session/{id}`.
 - Add biometric gate before `WebShell` composable rendering.
 - Add advanced native settings in `ui/settings` + `data/SettingsRepository`.
-- Prefer WebUI-owned navigation/settings for dashboard links; open the official dashboard through `DashboardActivity` and add Android DOM shims only for WebView compatibility.
+- Prefer WebUI-owned navigation/settings for dashboard links; open the official dashboard through Custom Tabs rather than an app-owned dashboard WebView unless there is a tested reason to revisit the WebView path.
 - Extend `HermesApiClient` with authenticated calls (e.g. `/api/sessions`) once an API key storage strategy is decided.
