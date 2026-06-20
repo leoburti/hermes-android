@@ -13,6 +13,18 @@ WebUI, while this repo owns Android integration and device safety.
 
 ---
 
+## 🧪 Now on Google Play — Internal Testers Wanted!
+
+We're looking for internal testers for the first pre-release build.
+
+👉 **[Join the internal test on Google Play](https://play.google.com/apps/internaltest/4701414321873860735)**
+
+You'll need a Google account to accept the invite. Once accepted, the app will appear in the Play Store for you to install and update automatically.
+
+> Requires a running [Hermes WebUI](https://github.com/nesquena/hermes-webui) instance. Enter your server URL on first launch.
+
+---
+
 ## 🧭 Contents
 
 - ⚡ Quick start
