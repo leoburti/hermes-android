@@ -37,7 +37,7 @@ Open the repo root in Android Studio for emulator/device runs.
 
 Requirements:
 
-- Android Studio with Android SDK 35
+- Android Studio with Android SDK 37
 - JDK 17 or newer runtime compatible with Gradle
 - A reachable HTTPS Hermes WebUI URL
 

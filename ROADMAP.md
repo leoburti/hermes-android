@@ -126,6 +126,7 @@ Recommended next order:
 | CLEANUP-001 | 2026-06-20 | Cleanup | Removed temporary microphone diagnostic logging/hooks from `MainActivity` after validation and kept only production microphone compatibility handling |
 | CLEANUP-002 | 2026-06-20 | Resources | Replaced environment-specific default endpoint strings with placeholder HTTPS origins, removed unused `strings`/`colors` resources, and merged launcher XML resources out of unnecessary `mipmap-anydpi-v26` |
 | SEC-001 | 2026-06-20 | Platform | Added Android 12+ `data_extraction_rules` configuration and wired it in `AndroidManifest.xml` while preserving `allowBackup=false` |
+| BUILD-002 | 2026-06-20 | Tooling | Upgraded Gradle wrapper to 9.6.0, Kotlin to 2.4.0, AndroidX/Material dependencies to latest stable set, and moved app compile/target SDK to 37; lint now reports no issues |
 | BUILD-001 | 2026-06-20 | Tooling | Migrated AGP config to built-in Kotlin, removed legacy compatibility flags, and eliminated obsolete variant API plus dependency-constraints sync warnings |
 | PERM-001 | 2026-06-20 | Permissions | Added Android `RECORD_AUDIO` plus an allowlisted WebView audio-capture permission bridge so WebUI microphone input can prompt and grant correctly |
 | PERM-002 | 2026-06-20 | Permissions | Added a document-start WebUI microphone fallback flag for the configured Hermes origin so Android WebView skips the unreliable Web Speech API path and uses MediaRecorder/getUserMedia |
