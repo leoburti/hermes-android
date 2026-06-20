@@ -25,11 +25,12 @@
 6. Official Hermes Dashboard links are treated as secondary browser surfaces. Android handles WebView new-window requests and dashboard-origin navigations by launching a Chrome Custom Tab with title/share UI minimized, instead of replacing the primary Hermes WebUI WebView or opening the full default browser UI.
 7. Dashboard-origin pages are not saved as the app startup URL. If a dashboard URL is ever the last observed WebView URL, the next launch falls back to the configured Hermes WebUI URL.
 8. `UrlPolicy` enforces HTTPS + domain allowlist for every navigation.
-9. `MainViewModel` drives loading/error/offline/share UI state.
-10. Share intents are parsed in `domain`, staged in ViewModel, then pushed into WebView flow.
-11. Settings updates rewrite encrypted preferences and reload trusted hosts. The Android setup sheet only asks for the Hermes WebUI URL; the dashboard origin is visible and editable in WebUI Settings > System after seeding.
-12. On WebView load failure, `MainViewModel` probes `{serverUrl}/api/status` (Hermes WebUI public liveness endpoint) to distinguish "server is down" from a transient content/navigation error. This refines the `isOffline` state and the copy shown to the user in `WebShell`.
-13. `hermes://session/{id}` deep links are handled in `MainActivity.onNewIntent`, navigating the WebView to `{serverUrl}/{id}` — the Hermes WebUI session route contract (see `apps/desktop/src/app/routes.ts: sessionRoute()` in hermes-agent).
+9. WebView microphone permission requests are accepted only for allowlisted Hermes origins and only for `RESOURCE_AUDIO_CAPTURE`. Android runtime microphone permission is requested on demand before granting the WebView request.
+10. `MainViewModel` drives loading/error/offline/share UI state.
+11. Share intents are parsed in `domain`, staged in ViewModel, then pushed into WebView flow.
+12. Settings updates rewrite encrypted preferences and reload trusted hosts. The Android setup sheet only asks for the Hermes WebUI URL; the dashboard origin is visible and editable in WebUI Settings > System after seeding.
+13. On WebView load failure, `MainViewModel` probes `{serverUrl}/api/status` (Hermes WebUI public liveness endpoint) to distinguish "server is down" from a transient content/navigation error. This refines the `isOffline` state and the copy shown to the user in `WebShell`.
+14. `hermes://session/{id}` deep links are handled in `MainActivity.onNewIntent`, navigating the WebView to `{serverUrl}/{id}` — the Hermes WebUI session route contract (see `apps/desktop/src/app/routes.ts: sessionRoute()` in hermes-agent).
 
 ## Security model
 
@@ -37,6 +38,7 @@
 - In-app navigation remains inside trust boundary only.
 - Everything else is blocked or externalized.
 - The official dashboard is browser-rendered through Custom Tabs so Chrome handles dashboard compatibility, cookies, TLS, and same-origin navigation.
+- Microphone access requires Android `RECORD_AUDIO` and an allowlisted WebView origin; video/camera and unknown WebView resources are denied.
 - Cleartext disabled at network config level.
 - Sensitive app-side config is encrypted with Android Keystore-backed keys.
 

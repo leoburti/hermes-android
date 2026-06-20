@@ -33,6 +33,7 @@ Known Android WebView compatibility behavior lives in `MainActivity.kt`:
 - Forced/algorithmic WebView darkening is disabled so Hermes WebUI keeps its own colors.
 - A measured viewport-height shim is injected because some Android WebView builds compute Hermes WebUI `100dvh` root layout height as `0px`, which hides page text/content.
 - Android normalizes the Official Hermes Dashboard URL to its origin, seeds it through WebUI `/api/dashboard/config` when WebUI has no dashboard URL, opens dashboard-origin new-window requests in Chrome Custom Tabs with minimal browser UI, and does not persist dashboard-origin pages as the app startup URL.
+- WebView microphone access is handled in `MainActivity.kt` through Android `RECORD_AUDIO` plus `WebChromeClient.onPermissionRequest`; grant only `PermissionRequest.RESOURCE_AUDIO_CAPTURE` for allowlisted Hermes origins.
 - Do not reintroduce a parallel native drawer or custom Android Terminal/menu button for the dashboard link.
 - Hermes WebUI DOM/CSS compatibility shims must stay scoped to the configured WebUI route. Do not inject the Hermes WebUI viewport/config shim into the official dashboard origin; dashboard links should use Chrome Custom Tabs unless a future task explicitly reopens the app-WebView approach.
 

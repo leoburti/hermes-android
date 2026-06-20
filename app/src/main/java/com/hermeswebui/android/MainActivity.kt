@@ -1,5 +1,6 @@
 package com.hermeswebui.android
 
+import android.Manifest
 import android.annotation.SuppressLint
 import android.app.DownloadManager
 import android.content.ClipData
@@ -7,6 +8,7 @@ import android.content.ClipboardManager
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.net.Uri
@@ -15,6 +17,7 @@ import android.os.Environment
 import android.os.Message
 import android.webkit.CookieManager
 import android.webkit.DownloadListener
+import android.webkit.PermissionRequest
 import android.webkit.SslErrorHandler
 import android.webkit.URLUtil
 import android.webkit.ValueCallback
@@ -51,6 +54,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
 import androidx.lifecycle.ViewModelProvider
 import androidx.webkit.WebSettingsCompat
@@ -132,12 +136,26 @@ class MainActivity : ComponentActivity() {
 
     private var allowedHosts: Set<String> = emptySet()
     private var filePathCallback: ValueCallback<Array<Uri>>? = null
+    private var pendingAudioPermissionRequest: PermissionRequest? = null
     private val serverUrlValidator = ServerUrlValidator()
 
     private val filePickerLauncher = registerForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
         filePathCallback?.onReceiveValue(uris.toTypedArray())
         filePathCallback = null
         viewModel.dismissShareBanner()
+    }
+
+    private val audioPermissionLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        val request = pendingAudioPermissionRequest ?: return@registerForActivityResult
+        pendingAudioPermissionRequest = null
+        if (granted && isTrustedPermissionOrigin(request.origin)) {
+            request.grant(arrayOf(PermissionRequest.RESOURCE_AUDIO_CAPTURE))
+        } else {
+            request.deny()
+            if (!granted) {
+                Toast.makeText(this, "Microphone permission denied", Toast.LENGTH_SHORT).show()
+            }
+        }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -331,6 +349,20 @@ class MainActivity : ComponentActivity() {
                     return true
                 }
 
+                override fun onPermissionRequest(request: PermissionRequest?) {
+                    if (request == null) return
+                    runOnUiThread {
+                        handleWebViewPermissionRequest(request)
+                    }
+                }
+
+                override fun onPermissionRequestCanceled(request: PermissionRequest?) {
+                    super.onPermissionRequestCanceled(request)
+                    if (pendingAudioPermissionRequest == request) {
+                        pendingAudioPermissionRequest = null
+                    }
+                }
+
                 override fun onShowFileChooser(
                     webView: WebView?,
                     filePathCallback: ValueCallback<Array<Uri>>?,
@@ -407,6 +439,35 @@ class MainActivity : ComponentActivity() {
 
             setDownloadListener(buildDownloadListener(this@MainActivity))
         }
+    }
+
+    private fun handleWebViewPermissionRequest(request: PermissionRequest) {
+        val requestedResources = request.resources?.toSet().orEmpty()
+        val audioOnly = requestedResources == setOf(PermissionRequest.RESOURCE_AUDIO_CAPTURE)
+        if (!audioOnly || !isTrustedPermissionOrigin(request.origin)) {
+            request.deny()
+            return
+        }
+
+        if (hasRecordAudioPermission()) {
+            request.grant(arrayOf(PermissionRequest.RESOURCE_AUDIO_CAPTURE))
+            return
+        }
+
+        pendingAudioPermissionRequest?.deny()
+        pendingAudioPermissionRequest = request
+        audioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+    }
+
+    private fun hasRecordAudioPermission(): Boolean {
+        return ContextCompat.checkSelfPermission(
+            this,
+            Manifest.permission.RECORD_AUDIO
+        ) == PackageManager.PERMISSION_GRANTED
+    }
+
+    private fun isTrustedPermissionOrigin(origin: Uri?): Boolean {
+        return origin != null && UrlPolicy(allowedHosts).isAllowed(origin.toString())
     }
 
     private fun disableWebViewDarkening(settings: WebSettings) {
