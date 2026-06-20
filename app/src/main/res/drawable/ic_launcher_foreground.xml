@@ -1,12 +1,62 @@
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
+
+    <!-- Caduceus staff — pill shape, golden gradient top→bottom -->
+    <path android:pathData="M54,29.25 a2.25,2.25 0 0,1 2.25,2.25 v47.25 a2.25,2.25 0 0,1 -2.25,2.25 a2.25,2.25 0 0,1 -2.25,-2.25 v-47.25 a2.25,2.25 0 0,1 2.25,-2.25Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="linear"
+                android:startX="54" android:startY="29.25"
+                android:endX="54" android:endY="81"
+                android:startColor="#F5C542"
+                android:endColor="#D4961C" />
+        </aapt:attr>
+    </path>
+
+    <!-- Left upper wing -->
     <path
-        android:fillColor="#EAF2F7"
-        android:pathData="M22,22h16v64H22z" />
+        android:fillColor="#E6F5C542"
+        android:pathData="M51.75,38.25 C45,33.75 33.75,33.75 29.25,38.25 C33.75,36 42.75,36 49.5,40.5Z" />
+    <!-- Left lower wing -->
     <path
-        android:fillColor="#EAF2F7"
-        android:pathData="M42,22h44v16H58v12h24v16H58v20H42z" />
+        android:fillColor="#CCF5C542"
+        android:pathData="M51.75,42.75 C47.25,39.375 38.25,39.375 33.75,42.75 C38.25,40.5 45,40.5 49.5,45Z" />
+
+    <!-- Right upper wing -->
+    <path
+        android:fillColor="#E6F5C542"
+        android:pathData="M56.25,38.25 C63,33.75 74.25,33.75 78.75,38.25 C74.25,36 65.25,36 58.5,40.5Z" />
+    <!-- Right lower wing -->
+    <path
+        android:fillColor="#CCD4961C"
+        android:pathData="M56.25,42.75 C60.75,39.375 69.75,39.375 74.25,42.75 C69.75,40.5 63,40.5 58.5,45Z" />
+
+    <!-- Left snake coil (stroke only) -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#F5C542"
+        android:strokeWidth="2.8"
+        android:strokeLineCap="round"
+        android:pathData="M54,72 C42.75,67.5 40.5,60.75 47.25,56.25 C40.5,58.5 38.25,65.25 45,69.75 C38.25,63 42.75,51.75 51.75,49.5 C45,54 42.75,60.75 49.5,65.25" />
+
+    <!-- Right snake coil (stroke only) -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#D4961C"
+        android:strokeWidth="2.8"
+        android:strokeLineCap="round"
+        android:pathData="M56.25,72 C63.75,67.5 63.75,60.75 60.75,56.25 C63.75,58.5 69.75,65.25 63,69.75 C69.75,63 65.25,51.75 56.25,49.5 C63,54 65.25,60.75 58.5,65.25" />
+
+    <!-- Top orb — outer glow -->
+    <path
+        android:fillColor="#F5C542"
+        android:pathData="M49.5,29.25 a4.5,4.5 0 1,0 9,0 a4.5,4.5 0 1,0 -9,0Z" />
+    <!-- Top orb — inner highlight -->
+    <path
+        android:fillColor="#B2FFF8E1"
+        android:pathData="M51.75,29.25 a2.25,2.25 0 1,0 4.5,0 a2.25,2.25 0 1,0 -4.5,0Z" />
 </vector>

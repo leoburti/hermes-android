@@ -36,6 +36,9 @@ This repository is the standalone Android app.
   from this workspace task without explicit instruction.
 - Keep the Android app a thin, secure companion to Hermes WebUI.
 - Prefer incremental changes over broad rewrites.
+- Treat `applicationId` and `namespace` as release-critical identity. Do not
+  change either without an explicit user decision, and finalize them before the
+  first public release.
 
 ## Product direction
 
@@ -73,6 +76,9 @@ Update docs when behavior, setup, architecture, or workflow changes:
 
 When the user states a wishlist item, add it to `ROADMAP.md` unless it is
 clearly out of scope or already tracked.
+
+When package identity, release signing, store distribution, or public release
+behavior changes, update `ROADMAP.md` and `README.md` in the same change.
 
 ## Verification
 

@@ -4,6 +4,11 @@ plugins {
     alias(libs.plugins.kotlin.compose)
 }
 
+// Output APK as hermes-android-<variant>.apk
+base {
+    archivesName.set("hermes-android")
+}
+
 android {
     namespace = "com.hermes.wrapper"
     compileSdk = 35
