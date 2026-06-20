@@ -1,6 +1,7 @@
 package com.hermeswebui.android.data
 
 import android.content.Context
+import androidx.core.content.edit
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 import com.hermeswebui.android.core.security.UrlOrigins
@@ -46,20 +47,20 @@ class SettingsRepository(context: Context) {
         val hosts = setOf(serverUrl, normalizedDashboardUrl)
             .mapNotNull(UrlOrigins::hostFrom)
             .toSet()
-        sharedPreferences.edit()
-            .putString(KEY_SERVER_URL, serverUrl)
-            .putString(KEY_DASHBOARD_URL, normalizedDashboardUrl)
-            .putString(KEY_ALLOWED_HOSTS, hosts.joinToString(","))
-            .putBoolean(KEY_IS_CONFIGURED, true)
-            .apply()
+        sharedPreferences.edit {
+            putString(KEY_SERVER_URL, serverUrl)
+            putString(KEY_DASHBOARD_URL, normalizedDashboardUrl)
+            putString(KEY_ALLOWED_HOSTS, hosts.joinToString(","))
+            putBoolean(KEY_IS_CONFIGURED, true)
+        }
     }
 
     fun clearWebSession() {
-        sharedPreferences.edit().remove(KEY_LAST_URL).apply()
+        sharedPreferences.edit { remove(KEY_LAST_URL) }
     }
 
     fun saveLastLoadedUrl(url: String) {
-        sharedPreferences.edit().putString(KEY_LAST_URL, url).apply()
+        sharedPreferences.edit { putString(KEY_LAST_URL, url) }
     }
 
     fun getLastLoadedUrl(): String? = sharedPreferences.getString(KEY_LAST_URL, null)

@@ -94,6 +94,8 @@ Important values:
 - `default_dashboard_url` - default Official Hermes Dashboard origin URL seeded into WebUI config when WebUI has no dashboard URL; path/query fragments are stripped before Android storage
 - `app_name` - Android launcher label
 
+The shipped defaults are placeholder HTTPS origins. Configure your real Hermes WebUI URL in app settings on first run.
+
 Android identity lives in:
 
 - `app/build.gradle.kts` - `namespace` and `applicationId`

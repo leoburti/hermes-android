@@ -1,14 +1,5 @@
 <resources>
     <string name="app_name">Hermes-Android</string>
-    <string name="default_server_url">https://forge.tailcef5d8.ts.net:8457</string>
-    <string name="default_dashboard_url">https://forge.tailcef5d8.ts.net:8455</string>
-    <string name="webview_offline_title">You are offline</string>
-    <string name="webview_offline_body">Check your connection and try again.</string>
-    <string name="webview_error_title">Unable to open Hermes</string>
-    <string name="webview_retry">Retry</string>
-    <string name="webview_open_external">Open in browser</string>
-    <string name="settings_title">App Settings</string>
-    <string name="settings_server_url">Hermes server URL</string>
-    <string name="settings_save">Save</string>
-    <string name="settings_reset_session">Reset web session</string>
+    <string name="default_server_url">https://hermes.example.com</string>
+    <string name="default_dashboard_url">https://dashboard.hermes.example.com</string>
 </resources>

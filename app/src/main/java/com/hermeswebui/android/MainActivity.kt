@@ -15,9 +15,7 @@ import android.net.Uri
 import android.os.Bundle
 import android.os.Environment
 import android.os.Message
-import android.util.Log
 import android.webkit.CookieManager
-import android.webkit.ConsoleMessage
 import android.webkit.DownloadListener
 import android.webkit.PermissionRequest
 import android.webkit.SslErrorHandler
@@ -200,10 +198,6 @@ private val HermesWebUiMicrophoneFallbackScript = """
 
 @OptIn(ExperimentalMaterial3Api::class)
 class MainActivity : ComponentActivity() {
-    companion object {
-        private const val TAG = "HermesMic"
-    }
-
     private lateinit var viewModel: MainViewModel
     private lateinit var webView: WebView
     private lateinit var settingsRepository: SettingsRepository
@@ -223,13 +217,10 @@ class MainActivity : ComponentActivity() {
     private val audioPermissionLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         val request = pendingAudioPermissionRequest ?: return@registerForActivityResult
         pendingAudioPermissionRequest = null
-        Log.d(TAG, "Runtime RECORD_AUDIO result granted=$granted origin=${request.origin}")
         if (granted && isTrustedPermissionOrigin(request.origin)) {
             request.grant(arrayOf(PermissionRequest.RESOURCE_AUDIO_CAPTURE))
-            Log.d(TAG, "Granted WebView audio permission after runtime grant")
         } else {
             request.deny()
-            Log.d(TAG, "Denied WebView audio permission after runtime prompt")
             if (!granted) {
                 Toast.makeText(this, "Microphone permission denied", Toast.LENGTH_SHORT).show()
             }
@@ -430,28 +421,13 @@ class MainActivity : ComponentActivity() {
 
                 override fun onPermissionRequest(request: PermissionRequest?) {
                     if (request == null) return
-                    Log.d(
-                        TAG,
-                        "onPermissionRequest origin=${request.origin} resources=${request.resources?.joinToString()} currentUrl=${webView.url}"
-                    )
                     runOnUiThread {
                         handleWebViewPermissionRequest(request)
                     }
                 }
 
-                override fun onConsoleMessage(consoleMessage: ConsoleMessage?): Boolean {
-                    if (consoleMessage != null) {
-                        Log.d(
-                            TAG,
-                            "console ${consoleMessage.messageLevel()} ${consoleMessage.sourceId()}:${consoleMessage.lineNumber()} ${consoleMessage.message()}"
-                        )
-                    }
-                    return super.onConsoleMessage(consoleMessage)
-                }
-
                 override fun onPermissionRequestCanceled(request: PermissionRequest?) {
                     super.onPermissionRequestCanceled(request)
-                    Log.d(TAG, "onPermissionRequestCanceled origin=${request?.origin}")
                     if (pendingAudioPermissionRequest == request) {
                         pendingAudioPermissionRequest = null
                     }
@@ -506,7 +482,6 @@ class MainActivity : ComponentActivity() {
                 override fun onPageFinished(view: WebView?, url: String?) {
                     super.onPageFinished(view, url)
                     applyHermesWebViewCompatibilityFixes(view, url)
-                    logMicFallbackState(view, url)
                     viewModel.onPageFinished(
                         url = url,
                         rememberLastUrl = !matchesConfiguredDashboardRoute(url)
@@ -541,21 +516,15 @@ class MainActivity : ComponentActivity() {
         val requestsAudio = requestedResources.contains(PermissionRequest.RESOURCE_AUDIO_CAPTURE)
         val trustedOrigin = isTrustedPermissionOrigin(request.origin)
         if (!requestsAudio || !trustedOrigin) {
-            Log.d(
-                TAG,
-                "Deny WebView permission origin=${request.origin} requestsAudio=$requestsAudio trustedOrigin=$trustedOrigin resources=${requestedResources.joinToString()}"
-            )
             request.deny()
             return
         }
 
         if (hasRecordAudioPermission()) {
             request.grant(arrayOf(PermissionRequest.RESOURCE_AUDIO_CAPTURE))
-            Log.d(TAG, "Granted WebView audio permission immediately")
             return
         }
 
-        Log.d(TAG, "Requesting runtime RECORD_AUDIO for origin=${request.origin}")
         pendingAudioPermissionRequest?.deny()
         pendingAudioPermissionRequest = request
         audioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
@@ -627,28 +596,6 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun logMicFallbackState(view: WebView?, url: String?) {
-        if (view == null || !matchesConfiguredWebUiRoute(url ?: view.url)) return
-        val script = """
-            (function() {
-              try {
-                return JSON.stringify({
-                  href: String(window.location.href || ''),
-                  flag: window.localStorage ? window.localStorage.getItem('mic_force_mediarecorder') : null,
-                  forceMarker: !!window.__hermesAndroidMicForceMediaRecorder,
-                  speech: typeof window.SpeechRecognition,
-                  webkitSpeech: typeof window.webkitSpeechRecognition,
-                  hasMediaDevices: !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia)
-                });
-              } catch (e) {
-                return 'error:' + String(e && e.message || e);
-              }
-            })();
-        """.trimIndent()
-        view.evaluateJavascript(script) { result ->
-            Log.d(TAG, "MicFallbackState $result")
-        }
-    }
 
     private fun installHermesWebUiDocumentStartFixes(view: WebView, serverUrl: String) {
         if (!WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) return
@@ -789,7 +736,7 @@ class MainActivity : ComponentActivity() {
                 return@DownloadListener
             }
             val fileName = URLUtil.guessFileName(url, contentDisposition, mimeType)
-            val request = DownloadManager.Request(Uri.parse(url)).apply {
+            val request = DownloadManager.Request(url.toUri()).apply {
                 setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
                 setTitle(fileName)
                 setDescription("Downloading from Hermes")
