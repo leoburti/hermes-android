@@ -15,15 +15,16 @@ WebUI, while this repo owns Android integration and device safety.
 
 ## 🧭 Contents
 
-- [⚡ Quick start](#quick-start)
-- [✨ Features](#features)
-- [⚙️ Configuration](#configuration)
-- [🧪 Running tests](#running-tests)
-- [🗺️ Architecture](#architecture)
-- [📚 Docs](#docs)
+- ⚡ Quick start
+- ✨ Features
+- ⚙️ Configuration
+- 🧪 Running tests
+- 🗺️ Architecture
+- 📚 Docs
 
 ---
 
+<a id="quick-start"></a>
 ## ⚡ Quick start
 
 ```powershell
@@ -34,43 +35,45 @@ cd hermes-android
 
 Open the repo root in Android Studio for emulator/device runs.
 
-✅ Requirements:
+Requirements:
 
-- 🤖 Android Studio with Android SDK 35
-- ☕ JDK 17 or newer runtime compatible with Gradle
-- 🌍 A reachable HTTPS Hermes WebUI URL
+- Android Studio with Android SDK 35
+- JDK 17 or newer runtime compatible with Gradle
+- A reachable HTTPS Hermes WebUI URL
 
 ---
 
+<a id="features"></a>
 ## ✨ Features
 
 ### 🧩 Native shell
 
-- 💜 Kotlin + Jetpack Compose Android app
-- 🛡️ Hardened WebView for Hermes WebUI
-- 🧱 Android WebView compatibility fixes for Hermes WebUI viewport rendering
-- 🧭 Native drawer with WebUI and Dashboard Terminal destinations
-- 🌱 First-run settings flow for WebUI and terminal URLs
-- ↩️ Back handling, pull-to-refresh, loading, offline, and error states
+- Kotlin + Jetpack Compose Android app
+- Hardened WebView for Hermes WebUI
+- Android WebView compatibility fixes for Hermes WebUI viewport rendering
+- Native drawer with WebUI and Dashboard Terminal destinations
+- First-run settings flow for WebUI and terminal URLs
+- Back handling, pull-to-refresh, loading, offline, and error states
 
 ### 🔌 Android integration
 
-- 📤 File upload and download support
-- 📲 Share-to-app intake for text and files
-- 🍪 Cookie-backed WebView session persistence
-- 🔐 Encrypted local settings storage
-- 🎨 Native app identity, launcher icon, splash, and settings surface
+- File upload and download support
+- Share-to-app intake for text and files
+- Cookie-backed WebView session persistence
+- Encrypted local settings storage
+- Native app identity, launcher icon, splash, and settings surface
 
 ### 🛡️ Security
 
-- 🔒 HTTPS-only URL validation
-- 🌍 Host allowlist for in-app navigation
-- 🚪 External browser handoff for non-allowlisted HTTPS links
-- 🚫 Cleartext traffic disabled
-- 🧯 Hardened WebView defaults and SSL-error cancellation
+- HTTPS-only URL validation
+- Host allowlist for in-app navigation
+- External browser handoff for non-allowlisted HTTPS links
+- Cleartext traffic disabled
+- Hardened WebView defaults and SSL-error cancellation
 
 ---
 
+<a id="configuration"></a>
 ## ⚙️ Configuration
 
 Default endpoints live in:
@@ -94,6 +97,7 @@ before adding signing config, and keep secrets out of the repository.
 
 ---
 
+<a id="running-tests"></a>
 ## 🧪 Running tests
 
 ```powershell
@@ -110,6 +114,7 @@ Optional checks:
 
 ---
 
+<a id="architecture"></a>
 ## 🗺️ Architecture
 
 > 🎨 Color key: 🔵 platform boundary · 🟣 security · 🟢 data · 🟠 domain · 🟡 UI · 🔴 tests
@@ -128,6 +133,7 @@ points.
 
 ---
 
+<a id="docs"></a>
 ## 📚 Docs
 
 - [ROADMAP.md](./ROADMAP.md) - status, wishlist, forward work, and progress
