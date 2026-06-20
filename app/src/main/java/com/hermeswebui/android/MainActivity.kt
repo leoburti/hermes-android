@@ -15,7 +15,9 @@ import android.net.Uri
 import android.os.Bundle
 import android.os.Environment
 import android.os.Message
+import android.util.Log
 import android.webkit.CookieManager
+import android.webkit.ConsoleMessage
 import android.webkit.DownloadListener
 import android.webkit.PermissionRequest
 import android.webkit.SslErrorHandler
@@ -136,11 +138,72 @@ private val HermesWebUiMicrophoneFallbackScript = """
       try {
         window.localStorage.setItem('mic_force_mediarecorder', '1');
       } catch (_) {}
+
+      // Some Android WebView builds expose SpeechRecognition but fail with not-allowed.
+      // Hide these constructors so Hermes WebUI consistently uses MediaRecorder/getUserMedia.
+      var disableSpeechConstructor = function(name) {
+        try {
+          Object.defineProperty(window, name, {
+            configurable: true,
+            get: function() { return undefined; },
+            set: function(_) {}
+          });
+        } catch (_) {
+          try { window[name] = undefined; } catch (_) {}
+        }
+      };
+
+      disableSpeechConstructor('SpeechRecognition');
+      disableSpeechConstructor('webkitSpeechRecognition');
+      try { window.__hermesAndroidMicForceMediaRecorder = true; } catch (_) {}
+
+      // Android WebView can fail to open microphone streams when a specific input
+      // deviceId/groupId constraint is requested. Fall back to default mic capture.
+      try {
+        if (navigator.mediaDevices && typeof navigator.mediaDevices.getUserMedia === 'function' &&
+            !navigator.mediaDevices.__hermesAndroidWrappedGetUserMedia) {
+          var originalGetUserMedia = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+          var sanitizeAudioConstraints = function(audio) {
+            if (audio === true || audio === false || audio == null) return audio;
+            if (typeof audio !== 'object') return true;
+
+            var clone = {};
+            for (var key in audio) {
+              if (!Object.prototype.hasOwnProperty.call(audio, key)) continue;
+              if (key === 'deviceId' || key === 'groupId') continue;
+              clone[key] = audio[key];
+            }
+            return Object.keys(clone).length ? clone : true;
+          };
+
+          navigator.mediaDevices.getUserMedia = function(constraints) {
+            var next = constraints;
+            try {
+              if (constraints && typeof constraints === 'object' && constraints.audio) {
+                next = {};
+                for (var key in constraints) {
+                  if (Object.prototype.hasOwnProperty.call(constraints, key)) {
+                    next[key] = constraints[key];
+                  }
+                }
+                next.audio = sanitizeAudioConstraints(constraints.audio);
+              }
+            } catch (_) {}
+            return originalGetUserMedia(next);
+          };
+          navigator.mediaDevices.__hermesAndroidWrappedGetUserMedia = true;
+          try { window.__hermesAndroidSanitizeAudioConstraints = true; } catch (_) {}
+        }
+      } catch (_) {}
     })();
 """.trimIndent()
 
 @OptIn(ExperimentalMaterial3Api::class)
 class MainActivity : ComponentActivity() {
+    companion object {
+        private const val TAG = "HermesMic"
+    }
+
     private lateinit var viewModel: MainViewModel
     private lateinit var webView: WebView
     private lateinit var settingsRepository: SettingsRepository
@@ -160,10 +223,13 @@ class MainActivity : ComponentActivity() {
     private val audioPermissionLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         val request = pendingAudioPermissionRequest ?: return@registerForActivityResult
         pendingAudioPermissionRequest = null
+        Log.d(TAG, "Runtime RECORD_AUDIO result granted=$granted origin=${request.origin}")
         if (granted && isTrustedPermissionOrigin(request.origin)) {
             request.grant(arrayOf(PermissionRequest.RESOURCE_AUDIO_CAPTURE))
+            Log.d(TAG, "Granted WebView audio permission after runtime grant")
         } else {
             request.deny()
+            Log.d(TAG, "Denied WebView audio permission after runtime prompt")
             if (!granted) {
                 Toast.makeText(this, "Microphone permission denied", Toast.LENGTH_SHORT).show()
             }
@@ -364,13 +430,28 @@ class MainActivity : ComponentActivity() {
 
                 override fun onPermissionRequest(request: PermissionRequest?) {
                     if (request == null) return
+                    Log.d(
+                        TAG,
+                        "onPermissionRequest origin=${request.origin} resources=${request.resources?.joinToString()} currentUrl=${webView.url}"
+                    )
                     runOnUiThread {
                         handleWebViewPermissionRequest(request)
                     }
                 }
 
+                override fun onConsoleMessage(consoleMessage: ConsoleMessage?): Boolean {
+                    if (consoleMessage != null) {
+                        Log.d(
+                            TAG,
+                            "console ${consoleMessage.messageLevel()} ${consoleMessage.sourceId()}:${consoleMessage.lineNumber()} ${consoleMessage.message()}"
+                        )
+                    }
+                    return super.onConsoleMessage(consoleMessage)
+                }
+
                 override fun onPermissionRequestCanceled(request: PermissionRequest?) {
                     super.onPermissionRequestCanceled(request)
+                    Log.d(TAG, "onPermissionRequestCanceled origin=${request?.origin}")
                     if (pendingAudioPermissionRequest == request) {
                         pendingAudioPermissionRequest = null
                     }
@@ -425,6 +506,7 @@ class MainActivity : ComponentActivity() {
                 override fun onPageFinished(view: WebView?, url: String?) {
                     super.onPageFinished(view, url)
                     applyHermesWebViewCompatibilityFixes(view, url)
+                    logMicFallbackState(view, url)
                     viewModel.onPageFinished(
                         url = url,
                         rememberLastUrl = !matchesConfiguredDashboardRoute(url)
@@ -456,17 +538,24 @@ class MainActivity : ComponentActivity() {
 
     private fun handleWebViewPermissionRequest(request: PermissionRequest) {
         val requestedResources = request.resources?.toSet().orEmpty()
-        val audioOnly = requestedResources == setOf(PermissionRequest.RESOURCE_AUDIO_CAPTURE)
-        if (!audioOnly || !isTrustedPermissionOrigin(request.origin)) {
+        val requestsAudio = requestedResources.contains(PermissionRequest.RESOURCE_AUDIO_CAPTURE)
+        val trustedOrigin = isTrustedPermissionOrigin(request.origin)
+        if (!requestsAudio || !trustedOrigin) {
+            Log.d(
+                TAG,
+                "Deny WebView permission origin=${request.origin} requestsAudio=$requestsAudio trustedOrigin=$trustedOrigin resources=${requestedResources.joinToString()}"
+            )
             request.deny()
             return
         }
 
         if (hasRecordAudioPermission()) {
             request.grant(arrayOf(PermissionRequest.RESOURCE_AUDIO_CAPTURE))
+            Log.d(TAG, "Granted WebView audio permission immediately")
             return
         }
 
+        Log.d(TAG, "Requesting runtime RECORD_AUDIO for origin=${request.origin}")
         pendingAudioPermissionRequest?.deny()
         pendingAudioPermissionRequest = request
         audioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
@@ -480,7 +569,38 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun isTrustedPermissionOrigin(origin: Uri?): Boolean {
-        return origin != null && urlPolicy.isAllowed(origin.toString())
+        if (origin != null) {
+            val raw = origin.toString()
+            if (urlPolicy.isAllowed(raw)) {
+                return true
+            }
+
+            val normalized = normalizePermissionOrigin(origin)
+            if (normalized != null && urlPolicy.isAllowed(normalized)) {
+                return true
+            }
+
+            if (origin.host.isNullOrBlank() && matchesConfiguredWebUiRoute(webView.url)) {
+                // Some Android WebView builds surface opaque/null-like iframe origins for same-page mic requests.
+                return true
+            }
+
+            return false
+        }
+
+        return matchesConfiguredWebUiRoute(webView.url)
+    }
+
+    private fun normalizePermissionOrigin(origin: Uri): String? {
+        val scheme = origin.scheme?.lowercase()?.takeIf { it == "https" } ?: return null
+        val host = origin.host
+            ?.trim()
+            ?.trimEnd('.')
+            ?.lowercase()
+            ?.takeIf { it.isNotBlank() }
+            ?: return null
+        val portSuffix = if (origin.port != -1) ":${origin.port}" else ""
+        return "$scheme://$host$portSuffix"
     }
 
     private fun disableWebViewDarkening(settings: WebSettings) {
@@ -504,6 +624,29 @@ class MainActivity : ComponentActivity() {
         val dashboardUrl = viewModel.uiState.value.settings.dashboardUrl
         if (dashboardUrl.isNotBlank()) {
             view.evaluateJavascript(buildHermesDashboardConfigScript(dashboardUrl), null)
+        }
+    }
+
+    private fun logMicFallbackState(view: WebView?, url: String?) {
+        if (view == null || !matchesConfiguredWebUiRoute(url ?: view.url)) return
+        val script = """
+            (function() {
+              try {
+                return JSON.stringify({
+                  href: String(window.location.href || ''),
+                  flag: window.localStorage ? window.localStorage.getItem('mic_force_mediarecorder') : null,
+                  forceMarker: !!window.__hermesAndroidMicForceMediaRecorder,
+                  speech: typeof window.SpeechRecognition,
+                  webkitSpeech: typeof window.webkitSpeechRecognition,
+                  hasMediaDevices: !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia)
+                });
+              } catch (e) {
+                return 'error:' + String(e && e.message || e);
+              }
+            })();
+        """.trimIndent()
+        view.evaluateJavascript(script) { result ->
+            Log.d(TAG, "MicFallbackState $result")
         }
     }
 

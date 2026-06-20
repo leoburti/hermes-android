@@ -121,6 +121,8 @@ Recommended next order:
 | BUG-002 | 2026-06-20 | WebView | Fixed Hermes WebUI text/content visibility by injecting a measured viewport-height shim when Android WebView computes `100dvh` as `0px` |
 | BUG-003 | 2026-06-20 | UI | Added safe-drawing system insets so WebView content and native controls do not overlap status or navigation bars |
 | BUG-004 | 2026-06-20 | Navigation | Fixed dashboard redirect/blue-screen recovery by normalizing stored dashboard URLs to their origin, opening dashboard-origin new-window requests in Chrome Custom Tabs, and preventing dashboard pages from becoming app startup state |
+| BUG-005 | 2026-06-20 | Permissions | Fixed Android WebView dictation false-denied behavior by normalizing permission-request origins and allowing trusted main-frame fallback for null/opaque origins while still granting audio capture only |
+| BUG-006 | 2026-06-20 | Permissions | Added Android `MODIFY_AUDIO_SETTINGS` permission because WebView Chromium microphone capture on emulator/device can fail device selection without it even when `RECORD_AUDIO` is granted |
 | BUILD-001 | 2026-06-20 | Tooling | Migrated AGP config to built-in Kotlin, removed legacy compatibility flags, and eliminated obsolete variant API plus dependency-constraints sync warnings |
 | PERM-001 | 2026-06-20 | Permissions | Added Android `RECORD_AUDIO` plus an allowlisted WebView audio-capture permission bridge so WebUI microphone input can prompt and grant correctly |
 | PERM-002 | 2026-06-20 | Permissions | Added a document-start WebUI microphone fallback flag for the configured Hermes origin so Android WebView skips the unreliable Web Speech API path and uses MediaRecorder/getUserMedia |

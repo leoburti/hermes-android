@@ -64,7 +64,7 @@ Requirements:
 
 - File upload and download support
 - Share-to-app intake for text and files
-- Microphone capture support for trusted Hermes WebUI origins
+- Microphone capture support for trusted Hermes WebUI pages
 - Cookie-backed WebView session persistence
 - Encrypted local settings storage
 - Native app identity, launcher icon, splash, and settings surface
@@ -74,7 +74,7 @@ Requirements:
 - HTTPS-only URL validation
 - Host allowlist for in-app navigation
 - External browser handoff for non-allowlisted HTTPS links
-- WebView microphone grants are limited to allowlisted Hermes origins and audio capture only
+- WebView microphone grants are limited to trusted Hermes WebUI pages and audio capture only (with Android `RECORD_AUDIO` + `MODIFY_AUDIO_SETTINGS` permissions)
 - Android seeds WebUI's MediaRecorder microphone fallback for the configured Hermes origin only
 - Cleartext traffic disabled
 - Hardened WebView defaults and SSL-error cancellation
