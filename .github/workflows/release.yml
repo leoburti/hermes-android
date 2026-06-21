@@ -58,8 +58,8 @@ jobs:
         with:
           name: signed-release-artifacts
           path: |
-            release/*.apk
-            release/*.aab
+            build/release/*.apk
+            build/release/*.aab
           if-no-files-found: error
 
       - name: Upload to Google Play (internal track)
@@ -68,7 +68,7 @@ jobs:
         with:
           serviceAccountJsonBase64: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON_BASE64 }}
           packageName: com.hermeswebui.android
-          releaseFiles: 'release/*.aab'
+          releaseFiles: 'build/release/*.aab'
           track: internal
           inAppUpdatePriority: 5
 
@@ -77,7 +77,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            release/*.apk
-            release/*.aab
+            build/release/*.apk
+            build/release/*.aab
           generate_release_notes: true
 
