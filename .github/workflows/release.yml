@@ -62,6 +62,16 @@ jobs:
             release/*.aab
           if-no-files-found: error
 
+      - name: Upload to Google Play (internal track)
+        if: startsWith(github.ref, 'refs/tags/v') && secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON_BASE64 != ''
+        uses: r0adkll/upload-google-play@v1
+        with:
+          serviceAccountJsonBase64: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON_BASE64 }}
+          packageName: com.hermeswebui.android
+          releaseFiles: 'release/*.aab'
+          track: internal
+          inAppUpdatePriority: 5
+
       - name: Publish GitHub release assets
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
