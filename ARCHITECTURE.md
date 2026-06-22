@@ -17,19 +17,19 @@
 
 ## Runtime flow
 
-1. App starts, loads encrypted WebUI settings and the stored/default dashboard origin URL (`SettingsRepository`).
+1. App starts and loads encrypted WebUI settings (`SettingsRepository`). The bundled dashboard origin default is blank so WebUI owns dashboard auto-detect and persistence.
 2. WebView boots with hardened configuration, default HTTP cache behavior, DOM storage, and service-worker cache settings for WebUI-managed assets.
 3. The Compose root fills the full window background, then applies `WindowInsets.safeDrawing` around the WebView shell and native snackbar so Android 15 edge-to-edge enforcement does not put content under status or navigation bars.
 4. Android WebView compatibility shims stay scoped to Hermes WebUI. Android disables native long-press handling (`isLongClickable = false`, `setOnLongClickListener { true }`) so Hermes WebUI's own touch long-press timer drives its action menus, and re-caps the WebUI floating-menu `max-height` with the measured viewport height because Android WebView evaluates CSS `100vh` as `0` (the same viewport-unit quirk it applies to `100dvh`), which would otherwise collapse the menus to an unreadable sliver. Android also injects a document-start microphone fallback so WebUI voice input uses its MediaRecorder path instead of Web Speech API. The official dashboard is not rendered in an app WebView.
-5. On the Hermes WebUI route, Android seeds the WebUI `/api/dashboard/config` origin URL when WebUI has no dashboard URL and Android has one stored/defaulted. Dashboard URLs are normalized to their origin before Android stores or matches them. WebUI then owns rendering and behavior for the Official Hermes Dashboard link in its rail/sidebar.
-6. Official Hermes Dashboard links are treated as secondary browser surfaces. Android handles WebView new-window requests and dashboard-origin navigations by launching a Chrome Custom Tab with title/share UI minimized, instead of replacing the primary Hermes WebUI WebView or opening the full default browser UI.
+5. On the Hermes WebUI route, Android does not write `/api/dashboard/config` or overwrite WebUI's Official Hermes Dashboard setting. WebUI owns dashboard auto-detect, persistence, rendering, and behavior for the dashboard link in its rail/sidebar.
+6. Official Hermes Dashboard links are treated as secondary browser surfaces. When Android has an explicitly configured local dashboard origin, it handles matching WebView new-window requests and dashboard-origin navigations by launching a Chrome Custom Tab with title/share UI minimized, instead of replacing the primary Hermes WebUI WebView.
 7. Dashboard-origin pages are not saved as the app startup URL. If a dashboard URL is ever the last observed WebView URL, the next launch falls back to the configured Hermes WebUI URL.
 8. `UrlPolicy` enforces supported web schemes (`http`/`https`) + domain allowlist for every navigation.
 9. WebView microphone permission requests are accepted only for audio capture on trusted Hermes pages. Android prefers explicit allowlisted HTTP/HTTPS origins, normalizes edge-case origin formatting, and allows null/opaque-origin requests only when the active main-frame URL is the configured Hermes WebUI route. Android runtime microphone permission is requested on demand before granting the WebView request.
 10. WebUI browser notifications are backed by Android notifications. Android injects a scoped `Notification`/`ServiceWorkerRegistration.showNotification` compatibility facade for the configured Hermes WebUI origin, requests `POST_NOTIFICATIONS` on Android 13+, publishes through a native notification channel, and accepts notification tap routes only when they target an allowlisted Hermes WebUI URL.
 11. `MainViewModel` drives loading/error/offline/share UI state. After the first successful page render, reloads and navigations keep the existing WebView content visible so cached pages do not flicker behind a full-screen native loading veil.
 12. Share intents are parsed in `domain`, staged in ViewModel, then pushed into WebView flow.
-13. Settings updates rewrite encrypted preferences and reload trusted hosts. The Android setup sheet only asks for the Hermes WebUI URL; the dashboard origin is visible and editable in WebUI Settings > System after seeding.
+13. Settings updates rewrite encrypted preferences and reload trusted hosts. The Android setup sheet only asks for the Hermes WebUI URL; the dashboard origin is visible and editable in WebUI Settings > System.
 14. On WebView load failure, `MainViewModel` probes `{serverUrl}/api/status` (Hermes WebUI public liveness endpoint) to distinguish "server is down" from a transient content/navigation error. This refines the `isOffline` state and the copy shown to the user in `WebShell`.
 15. `hermes://session/{id}` deep links are handled in `MainActivity.onNewIntent`, navigating the WebView to `{serverUrl}/{id}` — the Hermes WebUI session route contract (see `apps/desktop/src/app/routes.ts: sessionRoute()` in hermes-agent).
 
@@ -60,5 +60,5 @@
 - Add FCM push notification handlers that map server-originated events to allowlisted Hermes URLs/session IDs.
 - Add biometric gate before `WebShell` composable rendering.
 - Add advanced native settings in `ui/settings` + `data/SettingsRepository`.
-- Prefer WebUI-owned navigation/settings for dashboard links; open the official dashboard through Custom Tabs rather than an app-owned dashboard WebView unless there is a tested reason to revisit the WebView path.
+- Prefer WebUI-owned navigation/settings for dashboard links; do not write WebUI dashboard config from Android. Open explicitly configured dashboard origins through Custom Tabs rather than an app-owned dashboard WebView unless there is a tested reason to revisit the WebView path.
 - Extend `HermesApiClient` with authenticated calls (e.g. `/api/sessions`) once an API key storage strategy is decided.

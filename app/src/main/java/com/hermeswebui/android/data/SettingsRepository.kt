@@ -18,6 +18,27 @@ class SettingsRepository(context: Context) : SettingsStore {
         EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
     )
 
+    init {
+        // Migrate away from storing dashboard URLs in Android preferences.
+        // Versions before 0.1.5 stored a dashboard URL in SharedPreferences and injected it
+        // into WebUI via /api/dashboard/config. Now WebUI owns dashboard config completely.
+        // Clear any stored dashboard URLs to prevent old behavior on app upgrade.
+        runMigration()
+    }
+
+    private fun runMigration() {
+        val lastMigrationVersion = sharedPreferences.getInt(KEY_LAST_MIGRATION_VERSION, 0)
+        val currentMigrationVersion = 1 // Increment this when adding new migrations
+
+        if (lastMigrationVersion < currentMigrationVersion) {
+            // Migration 1: Clear dashboard URLs from pre-0.1.5 versions
+            sharedPreferences.edit {
+                remove(KEY_DASHBOARD_URL)
+                putInt(KEY_LAST_MIGRATION_VERSION, 1)
+            }
+        }
+    }
+
     override fun getSettings(defaultUrl: String, defaultDashboardUrl: String): AppSettings {
         val serverUrl = sharedPreferences.getString(KEY_SERVER_URL, defaultUrl)?.trim().orEmpty()
         val rawDashboardUrl = sharedPreferences
@@ -83,5 +104,6 @@ class SettingsRepository(context: Context) : SettingsStore {
         private const val KEY_LAST_URL = "last_url"
         private const val KEY_IS_CONFIGURED = "is_configured"
         private const val KEY_NOTIFICATION_PERMISSION_REQUESTED = "notification_permission_requested"
+        private const val KEY_LAST_MIGRATION_VERSION = "last_migration_version"
     }
 }

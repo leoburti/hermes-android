@@ -3,7 +3,7 @@
 > Maintenance-focused Android wrapper for Hermes Web UI. The core wrapper is
 > good as-is; product UI and workflow changes belong in Hermes WebUI.
 >
-> Last updated: 2026-06-21
+> Last updated: 2026-06-22
 
 ---
 
@@ -12,9 +12,9 @@
 | Surface | Status |
 |---|---|
 | Secure WebView shell | Done - HTTP/HTTPS navigation, host allowlist, hardened defaults |
-| WebUI integration | Done - first-run WebUI URL setting, dashboard config seeding, session persistence, pull-to-refresh |
+| WebUI integration | Done - first-run WebUI URL setting, WebUI-owned dashboard config, session persistence, pull-to-refresh |
 | WebView compatibility | Done - disables forced darkening, patches Android viewport-unit collapse, respects system-bar safe insets, uses browser-managed cache defaults, smooths reload rendering, restores touch-and-hold context-menu dispatch for conversation actions, and forces WebUI microphone input onto the Android-compatible MediaRecorder path |
-| Official dashboard link | Done - Android seeds WebUI's Official Hermes Dashboard origin when WebUI has none, opens dashboard-origin requests in a Chrome Custom Tab with minimal browser UI, and avoids persisting dashboard pages as startup state |
+| Official dashboard link | Done - Android no longer writes WebUI's Official Hermes Dashboard config, opens explicitly configured dashboard-origin requests in a Chrome Custom Tab with minimal browser UI, and avoids persisting dashboard pages as startup state |
 | Android sharing | Done - share-to-app intake for text and files |
 | Files | Done - WebView upload/download integration |
 | Microphone | Done - allowlisted WebView audio capture with Android runtime permission plus WebUI MediaRecorder fallback |
@@ -55,7 +55,7 @@
 - [x] Share-to-app intake for files
 - [x] Native launcher identity
 - [x] Splash and app theme
-- [x] WebUI Official Hermes Dashboard URL seeding
+- [x] WebUI-owned Official Hermes Dashboard setting
 - [x] Official dashboard link route
 - [x] Deep links (`hermes://session/{id}`)
 - [x] Server health probing
@@ -143,6 +143,9 @@ workflow changes should be made in Hermes WebUI instead.
 | CLEANUP-004 | 2026-06-21 | Cleanup | Removed stale in-code phase-2 TODOs already tracked in the roadmap, dropped unused Compose test catalog/debug references, and restored `keystore.properties.example` for documented signing setup |
 | BUG-007 | 2026-06-21 | WebView | Added a Hermes-origin-scoped touch-and-hold compatibility shim that dispatches `contextmenu` so conversation long-press action menus appear in Android WebView like mobile browsers |
 | BUG-008 | 2026-06-21 | WebView | Fixed invisible conversation long-press menus (Issue 6): Android WebView evaluates CSS `100vh` as 0, collapsing the WebUI floating-menu `max-height: calc(100vh - 16px)` to a ~2px sliver. Re-capped `.session-action-menu`/`.workspace-prefs-menu` `max-height` with the measured viewport height in the existing viewport shim. Root-caused via on-device DevTools/CDP inspection after ruling out touch-cancel, z-index, stacking, and opacity; reverted those earlier wrong attempts |
+| BUG-009 | 2026-06-22 | WebView | Fixed Issue 7 by removing Android's `/api/dashboard/config` write path and blanking the bundled dashboard default so opening WebUI from Android no longer changes WebUI's Official Hermes Dashboard setting from Auto-detect to Always show |
+| REL-007 | 2026-06-22 | Release | Updated Android app version to `0.1.5` with `versionCode` 6; created debug build variant that displays app name as "Hermes DEBUG" to distinguish test builds from official releases; deployed to emulator for testing |
+| BUG-010 | 2026-06-22 | Data migration | Fixed Issue 7 persistence: Added app startup migration that clears old dashboard URL from SharedPreferences on upgrade so users updating from pre-0.1.5 versions don't retain the stored dashboard URL that was previously being written to WebUI `/api/dashboard/config`; migration includes versioning for future data schema updates |
 
 ---
 

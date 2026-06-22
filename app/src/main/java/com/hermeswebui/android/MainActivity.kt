@@ -911,11 +911,6 @@ class MainActivity : ComponentActivity() {
         view.evaluateJavascript(HermesWebViewViewportFixScript, null)
         view.evaluateJavascript(HermesWebUiMicrophoneFallbackScript, null)
         view.evaluateJavascript(buildHermesWebUiNotificationBridgeScript(), null)
-
-        val dashboardUrl = viewModel.uiState.value.settings.dashboardUrl
-        if (dashboardUrl.isNotBlank()) {
-            view.evaluateJavascript(buildHermesDashboardConfigScript(dashboardUrl), null)
-        }
     }
 
 
@@ -1133,96 +1128,6 @@ class MainActivity : ComponentActivity() {
               postNative('permissionState', {}).then(function(response) {
                 if (response && response.permission) permission = normalizePermission(response.permission);
               });
-            })();
-        """.trimIndent()
-    }
-
-    private fun buildHermesDashboardConfigScript(dashboardUrl: String): String {
-        val quotedDashboardUrl = JSONObject.quote(dashboardUrl)
-        return """
-            (function() {
-              var dashboardUrl = $quotedDashboardUrl;
-              if (!dashboardUrl || !window.fetch) return;
-
-              var normalize = function(value) {
-                return String(value || '').trim().replace(/\/+${'$'}/, '');
-              };
-              var dashboardConfigUrl = '';
-              try {
-                var parsedDashboardUrl = new URL(dashboardUrl, window.location.href);
-                parsedDashboardUrl.pathname = '';
-                parsedDashboardUrl.search = '';
-                parsedDashboardUrl.hash = '';
-                dashboardConfigUrl = normalize(parsedDashboardUrl.toString());
-              } catch (_) {
-                return;
-              }
-              var targetUrl = dashboardConfigUrl;
-              if (!targetUrl) return;
-
-              var applyControls = function(config) {
-                var modeEl = document.getElementById('settingsDashboardMode');
-                var urlEl = document.getElementById('settingsDashboardUrl');
-                if (modeEl && config && config.enabled) modeEl.value = config.enabled;
-                if (urlEl) {
-                  urlEl.value = (config && config.url) || dashboardConfigUrl;
-                }
-              };
-              var refreshDashboardLink = function(config) {
-                applyControls(config);
-                if (typeof window.refreshDashboardStatus === 'function') {
-                  try { window.refreshDashboardStatus(true); } catch (_) {}
-                }
-              };
-
-              if (window.__hermesAndroidDashboardSeedComplete === targetUrl ||
-                  window.__hermesAndroidDashboardSeedInFlight === targetUrl) {
-                return;
-              }
-              window.__hermesAndroidDashboardSeedInFlight = targetUrl;
-
-              var clearInFlight = function() {
-                if (window.__hermesAndroidDashboardSeedInFlight === targetUrl) {
-                  window.__hermesAndroidDashboardSeedInFlight = '';
-                }
-              };
-              var markComplete = function() {
-                window.__hermesAndroidDashboardSeedComplete = targetUrl;
-                clearInFlight();
-              };
-
-              fetch('/api/dashboard/config', { credentials: 'same-origin' })
-                .then(function(response) {
-                  if (!response || !response.ok) throw new Error('dashboard config unavailable');
-                  return response.json();
-                })
-                .then(function(config) {
-                  var currentUrl = normalize(config && config.url);
-                  if (currentUrl) {
-                    refreshDashboardLink(config);
-                    markComplete();
-                    return null;
-                  }
-                  return fetch('/api/dashboard/config', {
-                    method: 'POST',
-                    credentials: 'same-origin',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ enabled: 'always', url: dashboardConfigUrl })
-                  }).then(function(response) {
-                    if (!response || !response.ok) throw new Error('dashboard config save failed');
-                    return response.json();
-                  });
-                })
-                .then(function(saved) {
-                  if (saved) {
-                    refreshDashboardLink(saved);
-                    markComplete();
-                  }
-                })
-                .catch(function() {
-                  clearInFlight();
-                  applyControls({ enabled: 'always', url: dashboardConfigUrl });
-                });
             })();
         """.trimIndent()
     }

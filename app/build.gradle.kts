@@ -3,7 +3,7 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import java.io.File
 import java.util.Properties
 
-val appVersionName = "0.1.4-pre-release"
+val appVersionName = "0.1.5"
 val distributionArtifactName = "hermes-webui-v$appVersionName"
 
 val keystoreProperties = Properties().apply {
@@ -96,7 +96,7 @@ extensions.configure<ApplicationExtension>("android") {
         applicationId = "com.hermeswebui.android"
         minSdk = 26
         targetSdk = 37
-        versionCode = 5
+        versionCode = 6
         versionName = appVersionName
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
