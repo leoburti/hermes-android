@@ -80,6 +80,7 @@ workflow changes should be made in Hermes WebUI instead.
 - [ ] Optional native sessions list (requires authenticated API access)
 - [ ] WebUI menu shortcuts for files, kanban, and status if needed
 - [ ] Instrumentation tests for WebView navigation and intent flows
+- [ ] Evaluate a Trusted Web Activity (TWA) variant rendered in real Chrome, gated on Hermes WebUI serving `/.well-known/assetlinks.json` (draft + fingerprint in `twa/`); accept loss of native bridges and HTTPS-only verification before pursuing
 - [x] Final package/application ID decision before first public release
 - [x] Release signing automation docs and snippets
 
@@ -141,6 +142,7 @@ workflow changes should be made in Hermes WebUI instead.
 | PERF-001 | 2026-06-21 | WebView | Made WebView and service-worker cache defaults explicit, advertised the real app version in the user agent, and kept rendered content visible during reloads after the first successful page load |
 | CLEANUP-004 | 2026-06-21 | Cleanup | Removed stale in-code phase-2 TODOs already tracked in the roadmap, dropped unused Compose test catalog/debug references, and restored `keystore.properties.example` for documented signing setup |
 | BUG-007 | 2026-06-21 | WebView | Added a Hermes-origin-scoped touch-and-hold compatibility shim that dispatches `contextmenu` so conversation long-press action menus appear in Android WebView like mobile browsers |
+| BUG-008 | 2026-06-21 | WebView | Fixed invisible conversation long-press menus (Issue 6): Android WebView evaluates CSS `100vh` as 0, collapsing the WebUI floating-menu `max-height: calc(100vh - 16px)` to a ~2px sliver. Re-capped `.session-action-menu`/`.workspace-prefs-menu` `max-height` with the measured viewport height in the existing viewport shim. Root-caused via on-device DevTools/CDP inspection after ruling out touch-cancel, z-index, stacking, and opacity; reverted those earlier wrong attempts |
 
 ---
 

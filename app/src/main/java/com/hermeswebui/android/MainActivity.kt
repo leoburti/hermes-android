@@ -121,6 +121,12 @@ private val HermesWebViewViewportFixScript = """
         if (!height) return;
 
         var px = Math.round(height) + 'px';
+        // Hermes WebUI floating menus cap their height with `max-height: calc(100vh - 16px)`
+        // and scroll the overflow. Android System WebView evaluates CSS `100vh` as 0 here
+        // (same viewport-unit quirk as `100dvh`), so that max-height collapses to 0 and the
+        // menu renders as a ~2px sliver with its items scrolled out of view. Re-cap the menus
+        // with the measured viewport height so they size to their content again.
+        var menuMax = Math.max(120, Math.round(height) - 16) + 'px';
         var style = document.getElementById(styleId);
         if (!style) {
           style = document.createElement('style');
@@ -130,7 +136,8 @@ private val HermesWebViewViewportFixScript = """
         style.textContent = [
           'html, body { height: ' + px + ' !important; min-height: ' + px + ' !important; }',
           'body { overflow: hidden !important; }',
-          '.layout, .rail, .sidebar, .main, .rightpanel, #sessionList, .messages { min-height: 0 !important; }'
+          '.layout, .rail, .sidebar, .main, .rightpanel, #sessionList, .messages { min-height: 0 !important; }',
+          '.session-action-menu, .workspace-prefs-menu { max-height: ' + menuMax + ' !important; }'
         ].join('\n');
       };
 
@@ -216,121 +223,7 @@ private val HermesWebUiMicrophoneFallbackScript = """
      })();
 """.trimIndent()
 
-private val HermesWebUiLongPressContextMenuScript = """
-    (function() {
-      if (window.__hermesAndroidLongPressContextMenuInstalled) return;
-      window.__hermesAndroidLongPressContextMenuInstalled = true;
 
-      var HOLD_MS = 550;
-      var MOVE_PX = 10;
-      var timer = 0;
-      var startX = 0;
-      var startY = 0;
-      var target = null;
-      var touchId = null;
-      var moved = false;
-
-      var clearTimer = function() {
-        if (timer) {
-          window.clearTimeout(timer);
-          timer = 0;
-        }
-      };
-
-      var isEditableTarget = function(node) {
-        var el = node && node.nodeType === 3 ? node.parentElement : node;
-        if (!el || !el.closest) return false;
-        var editable = el.closest('input, textarea, select, [contenteditable=""], [contenteditable="true"]');
-        return !!editable;
-      };
-
-      var dispatchContextMenu = function(el, x, y) {
-        if (!el || isEditableTarget(el)) return;
-        try {
-          var event = new MouseEvent('contextmenu', {
-            bubbles: true,
-            cancelable: true,
-            view: window,
-            clientX: x,
-            clientY: y,
-            button: 2,
-            buttons: 2
-          });
-          el.dispatchEvent(event);
-        } catch (_) {
-          var fallback = document.createEvent('MouseEvents');
-          fallback.initMouseEvent('contextmenu', true, true, window, 0, x, y, x, y, false, false, false, false, 2, null);
-          el.dispatchEvent(fallback);
-        }
-      };
-
-      var handleTouchStart = function(event) {
-        if (!event.touches || event.touches.length !== 1) {
-          clearTimer();
-          target = null;
-          touchId = null;
-          moved = false;
-          return;
-        }
-        var touch = event.touches[0];
-        startX = touch.clientX;
-        startY = touch.clientY;
-        touchId = touch.identifier;
-        target = event.target;
-        moved = false;
-
-        clearTimer();
-        timer = window.setTimeout(function() {
-          dispatchContextMenu(target, startX, startY);
-          clearTimer();
-          target = null;
-          touchId = null;
-          moved = false;
-        }, HOLD_MS);
-      };
-
-      var handleTouchMove = function(event) {
-        if (!timer || touchId == null || !event.changedTouches) return;
-        for (var i = 0; i < event.changedTouches.length; i++) {
-          var touch = event.changedTouches[i];
-          if (touch.identifier !== touchId) continue;
-          var movedX = Math.abs(touch.clientX - startX);
-          var movedY = Math.abs(touch.clientY - startY);
-          if (movedX > MOVE_PX || movedY > MOVE_PX) {
-            moved = true;
-            clearTimer();
-            target = null;
-            touchId = null;
-          }
-          return;
-        }
-      };
-
-      var handleTouchCancel = function() {
-        if (timer && !moved && target) {
-          // Android WebView can cancel touch when native long-press handling engages.
-          // Dispatch contextmenu before clearing state so Hermes WebUI long-press menus still open.
-          dispatchContextMenu(target, startX, startY);
-        }
-        clearTimer();
-        target = null;
-        touchId = null;
-        moved = false;
-      };
-
-      var clearTouchState = function() {
-        clearTimer();
-        target = null;
-        touchId = null;
-        moved = false;
-      };
-
-      document.addEventListener('touchstart', handleTouchStart, { passive: true, capture: true });
-      document.addEventListener('touchmove', handleTouchMove, { passive: true, capture: true });
-      document.addEventListener('touchend', clearTouchState, { passive: true, capture: true });
-      document.addEventListener('touchcancel', handleTouchCancel, { passive: true, capture: true });
-    })();
-""".trimIndent()
 
 @OptIn(ExperimentalMaterial3Api::class)
 class MainActivity : ComponentActivity() {
@@ -345,7 +238,7 @@ class MainActivity : ComponentActivity() {
     private var notificationPermissionRequestInFlight = false
     private var microphoneFallbackScriptHandler: ScriptHandler? = null
     private var notificationBridgeScriptHandler: ScriptHandler? = null
-    private var longPressContextMenuScriptHandler: ScriptHandler? = null
+
     private val serverUrlValidator = ServerUrlValidator()
 
     private val filePickerLauncher = registerForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
@@ -1013,7 +906,8 @@ class MainActivity : ComponentActivity() {
         if (!matchesConfiguredWebUiRoute(url ?: viewModel.uiState.value.currentUrl)) return
 
         // Android WebView can report supported dynamic viewport units while computing them as 0px.
-        // Hermes WebUI uses 100dvh for the root flex shell, so force the measured viewport height.
+        // Hermes WebUI uses 100dvh for the root flex shell (and 100vh max-height for floating
+        // menus), so force the measured viewport height for both.
         view.evaluateJavascript(HermesWebViewViewportFixScript, null)
         view.evaluateJavascript(HermesWebUiMicrophoneFallbackScript, null)
         view.evaluateJavascript(buildHermesWebUiNotificationBridgeScript(), null)
@@ -1031,7 +925,6 @@ class MainActivity : ComponentActivity() {
 
         microphoneFallbackScriptHandler?.remove()
         notificationBridgeScriptHandler?.remove()
-        longPressContextMenuScriptHandler?.remove()
         microphoneFallbackScriptHandler = runCatching {
             WebViewCompat.addDocumentStartJavaScript(
                 view,
@@ -1043,13 +936,6 @@ class MainActivity : ComponentActivity() {
             WebViewCompat.addDocumentStartJavaScript(
                 view,
                 buildHermesWebUiNotificationBridgeScript(),
-                setOf(originRule)
-            )
-        }.getOrNull()
-        longPressContextMenuScriptHandler = runCatching {
-            WebViewCompat.addDocumentStartJavaScript(
-                view,
-                HermesWebUiLongPressContextMenuScript,
                 setOf(originRule)
             )
         }.getOrNull()
