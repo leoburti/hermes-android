@@ -8,7 +8,7 @@ import org.junit.Test
 
 class MainViewModelTest {
     private val defaultServerUrl = "https://hermes.example.com"
-    private val defaultDashboardUrl = "https://dashboard.hermes.example.com"
+    private val defaultDashboardUrl = ""
 
     @Test
     fun `visible commit marks loaded content`() {
@@ -95,8 +95,8 @@ class MainViewModelTest {
     private class FakeSettingsStore : SettingsStore {
         private var settings = AppSettings(
             serverUrl = "https://hermes.example.com",
-            dashboardUrl = "https://dashboard.hermes.example.com",
-            allowedHosts = setOf("hermes.example.com", "dashboard.hermes.example.com"),
+            dashboardUrl = "",
+            allowedHosts = setOf("hermes.example.com"),
             isConfigured = true
         )
 
@@ -111,7 +111,7 @@ class MainViewModelTest {
             settings = settings.copy(
                 serverUrl = serverUrl,
                 dashboardUrl = dashboardUrl,
-                allowedHosts = setOf("next.example.com", "dashboard.hermes.example.com"),
+                allowedHosts = setOf("next.example.com"),
                 isConfigured = true
             )
         }

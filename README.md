@@ -94,11 +94,11 @@ Requirements:
 - Default WebView HTTP/service-worker caching with smoother reload rendering
 - System-bar inset handling so WebView content and native controls avoid status and navigation bars
 - Android WebView microphone compatibility that forces WebUI voice input through its MediaRecorder path
-- WebUI-owned navigation with Android seeding the WebUI Official Hermes Dashboard origin when needed
-- Official Hermes Dashboard links open in a Chrome Custom Tab with minimal browser UI instead of the full default browser
+- WebUI-owned navigation for the Official Hermes Dashboard setting
+- Explicitly configured Official Hermes Dashboard links open in a Chrome Custom Tab with minimal browser UI
 - Deep link support: `hermes://session/{id}` navigates to Hermes sessions
 - Server health probing on WebView errors to distinguish server-down from content errors
-- First-run settings flow for the Hermes WebUI URL; the dashboard URL is managed by WebUI Settings > System after Android seeds it
+- First-run settings flow for the Hermes WebUI URL; the dashboard URL is managed only by WebUI Settings > System
 - Back handling, pull-to-refresh, loading, offline, and error states
 
 ### 🔌 Android integration
@@ -134,10 +134,10 @@ Default endpoints live in:
 Important values:
 
 - `default_server_url` - default Hermes WebUI URL
-- `default_dashboard_url` - default Official Hermes Dashboard origin URL seeded into WebUI config when WebUI has no dashboard URL; path/query fragments are stripped before Android storage
+- `default_dashboard_url` - optional local Official Hermes Dashboard origin used only for Android-side Custom Tab matching when explicitly configured; leave blank so WebUI owns auto-detect and persistence
 - `app_name` - Android launcher label
 
-The shipped defaults are placeholder HTTPS origins. Configure your real Hermes WebUI URL in app settings on first run; both `http://` and `https://` URLs are accepted.
+The shipped WebUI default is a placeholder HTTPS origin and the shipped dashboard default is blank. Configure your real Hermes WebUI URL in app settings on first run; both `http://` and `https://` URLs are accepted.
 
 Android identity lives in:
 
