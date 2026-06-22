@@ -1,0 +1,13 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.hermeswebui.android",
+      "sha256_cert_fingerprints": [
+        "48:8D:B7:0A:54:58:33:DF:BF:31:54:C7:CB:11:E4:23:0C:70:53:72:7D:3E:07:DB:99:3A:CA:E7:3A:96:35:54"
+      ]
+    }
+  }
+]
+
