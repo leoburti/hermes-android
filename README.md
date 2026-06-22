@@ -38,12 +38,12 @@ To get added, **message [@Paladin173](https://github.com/Paladin173) your Gmail 
 
 Once added, the app will appear in the Play Store for you to install and receive automatic updates.
 
-Current pre-release version: `v0.1.3-pre-release`.
+Current pre-release version: `v0.1.4-pre-release`.
 
 Current Android build metadata:
 
-- Version name: `0.1.3-pre-release`
-- Version code: `4`
+- Version name: `0.1.4-pre-release`
+- Version code: `5`
 - Application ID: `com.hermeswebui.android`
 - Compile/target SDK: `37`
 
@@ -90,6 +90,7 @@ Requirements:
 - Kotlin + Jetpack Compose Android app
 - Hardened WebView for Hermes WebUI
 - Android WebView compatibility fixes for Hermes WebUI viewport rendering
+- Android WebView touch-and-hold compatibility shim so Hermes WebUI conversation long-press menus appear like mobile browsers
 - Default WebView HTTP/service-worker caching with smoother reload rendering
 - System-bar inset handling so WebView content and native controls avoid status and navigation bars
 - Android WebView microphone compatibility that forces WebUI voice input through its MediaRecorder path

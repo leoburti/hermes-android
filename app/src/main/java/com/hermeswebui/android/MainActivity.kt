@@ -213,6 +213,122 @@ private val HermesWebUiMicrophoneFallbackScript = """
           try { window.__hermesAndroidSanitizeAudioConstraints = true; } catch (_) {}
         }
       } catch (_) {}
+     })();
+""".trimIndent()
+
+private val HermesWebUiLongPressContextMenuScript = """
+    (function() {
+      if (window.__hermesAndroidLongPressContextMenuInstalled) return;
+      window.__hermesAndroidLongPressContextMenuInstalled = true;
+
+      var HOLD_MS = 550;
+      var MOVE_PX = 10;
+      var timer = 0;
+      var startX = 0;
+      var startY = 0;
+      var target = null;
+      var touchId = null;
+      var moved = false;
+
+      var clearTimer = function() {
+        if (timer) {
+          window.clearTimeout(timer);
+          timer = 0;
+        }
+      };
+
+      var isEditableTarget = function(node) {
+        var el = node && node.nodeType === 3 ? node.parentElement : node;
+        if (!el || !el.closest) return false;
+        var editable = el.closest('input, textarea, select, [contenteditable=""], [contenteditable="true"]');
+        return !!editable;
+      };
+
+      var dispatchContextMenu = function(el, x, y) {
+        if (!el || isEditableTarget(el)) return;
+        try {
+          var event = new MouseEvent('contextmenu', {
+            bubbles: true,
+            cancelable: true,
+            view: window,
+            clientX: x,
+            clientY: y,
+            button: 2,
+            buttons: 2
+          });
+          el.dispatchEvent(event);
+        } catch (_) {
+          var fallback = document.createEvent('MouseEvents');
+          fallback.initMouseEvent('contextmenu', true, true, window, 0, x, y, x, y, false, false, false, false, 2, null);
+          el.dispatchEvent(fallback);
+        }
+      };
+
+      var handleTouchStart = function(event) {
+        if (!event.touches || event.touches.length !== 1) {
+          clearTimer();
+          target = null;
+          touchId = null;
+          moved = false;
+          return;
+        }
+        var touch = event.touches[0];
+        startX = touch.clientX;
+        startY = touch.clientY;
+        touchId = touch.identifier;
+        target = event.target;
+        moved = false;
+
+        clearTimer();
+        timer = window.setTimeout(function() {
+          dispatchContextMenu(target, startX, startY);
+          clearTimer();
+          target = null;
+          touchId = null;
+          moved = false;
+        }, HOLD_MS);
+      };
+
+      var handleTouchMove = function(event) {
+        if (!timer || touchId == null || !event.changedTouches) return;
+        for (var i = 0; i < event.changedTouches.length; i++) {
+          var touch = event.changedTouches[i];
+          if (touch.identifier !== touchId) continue;
+          var movedX = Math.abs(touch.clientX - startX);
+          var movedY = Math.abs(touch.clientY - startY);
+          if (movedX > MOVE_PX || movedY > MOVE_PX) {
+            moved = true;
+            clearTimer();
+            target = null;
+            touchId = null;
+          }
+          return;
+        }
+      };
+
+      var handleTouchCancel = function() {
+        if (timer && !moved && target) {
+          // Android WebView can cancel touch when native long-press handling engages.
+          // Dispatch contextmenu before clearing state so Hermes WebUI long-press menus still open.
+          dispatchContextMenu(target, startX, startY);
+        }
+        clearTimer();
+        target = null;
+        touchId = null;
+        moved = false;
+      };
+
+      var clearTouchState = function() {
+        clearTimer();
+        target = null;
+        touchId = null;
+        moved = false;
+      };
+
+      document.addEventListener('touchstart', handleTouchStart, { passive: true, capture: true });
+      document.addEventListener('touchmove', handleTouchMove, { passive: true, capture: true });
+      document.addEventListener('touchend', clearTouchState, { passive: true, capture: true });
+      document.addEventListener('touchcancel', handleTouchCancel, { passive: true, capture: true });
     })();
 """.trimIndent()
 
@@ -229,6 +345,7 @@ class MainActivity : ComponentActivity() {
     private var notificationPermissionRequestInFlight = false
     private var microphoneFallbackScriptHandler: ScriptHandler? = null
     private var notificationBridgeScriptHandler: ScriptHandler? = null
+    private var longPressContextMenuScriptHandler: ScriptHandler? = null
     private val serverUrlValidator = ServerUrlValidator()
 
     private val filePickerLauncher = registerForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
@@ -430,6 +547,8 @@ class MainActivity : ComponentActivity() {
             settings.userAgentString = "${settings.userAgentString} Hermes-Android/${appVersionName()}"
             disableWebViewDarkening(settings)
             installHermesNotificationWebMessageBridge(this)
+            isLongClickable = false
+            setOnLongClickListener { true }
 
             CookieManager.getInstance().setAcceptCookie(true)
             CookieManager.getInstance().setAcceptThirdPartyCookies(this, false)
@@ -912,6 +1031,7 @@ class MainActivity : ComponentActivity() {
 
         microphoneFallbackScriptHandler?.remove()
         notificationBridgeScriptHandler?.remove()
+        longPressContextMenuScriptHandler?.remove()
         microphoneFallbackScriptHandler = runCatching {
             WebViewCompat.addDocumentStartJavaScript(
                 view,
@@ -923,6 +1043,13 @@ class MainActivity : ComponentActivity() {
             WebViewCompat.addDocumentStartJavaScript(
                 view,
                 buildHermesWebUiNotificationBridgeScript(),
+                setOf(originRule)
+            )
+        }.getOrNull()
+        longPressContextMenuScriptHandler = runCatching {
+            WebViewCompat.addDocumentStartJavaScript(
+                view,
+                HermesWebUiLongPressContextMenuScript,
                 setOf(originRule)
             )
         }.getOrNull()
