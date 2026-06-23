@@ -22,7 +22,7 @@
 | Native navigation | Done - WebUI-owned dashboard link integration and deep links |
 | Server health probing | Done - `/api/status` probe to distinguish server-down from content errors |
 | Browser notifications | Done - WebUI Notification API bridge, Android runtime permission, notification channel, and trusted WebUI tap routing |
-| Native distribution polish | Done - app identity and signed release automation are wired for local builds plus GitHub Actions |
+| Native distribution polish | Done - app identity and signed GitHub APK release automation are wired for local builds plus GitHub Actions |
 | Maintenance posture | Stable - accept Android-wrapper fixes, compatibility updates, dependency updates, and release maintenance |
 | Native feature expansion | Deferred - revisit only for Android-specific needs with a clear WebUI/API boundary |
 
@@ -146,6 +146,11 @@ workflow changes should be made in Hermes WebUI instead.
 | BUG-009 | 2026-06-22 | WebView | Fixed Issue 7 by removing Android's `/api/dashboard/config` write path and blanking the bundled dashboard default so opening WebUI from Android no longer changes WebUI's Official Hermes Dashboard setting from Auto-detect to Always show |
 | REL-007 | 2026-06-22 | Release | Updated Android app version to `0.1.5` with `versionCode` 6; created debug build variant that displays app name as "Hermes DEBUG" to distinguish test builds from official releases; deployed to emulator for testing |
 | BUG-010 | 2026-06-22 | Data migration | Fixed Issue 7 persistence: Added app startup migration that clears old dashboard URL from SharedPreferences on upgrade so users updating from pre-0.1.5 versions don't retain the stored dashboard URL that was previously being written to WebUI `/api/dashboard/config`; migration includes versioning for future data schema updates |
+| BUG-011 | 2026-06-22 | WebView | Fixed Issue 5 cold-start workspace restore by persisting client-side route/history updates via WebView visited-history callbacks, so the app reopens the active Hermes session route after process death instead of falling back to a stale root URL that can show an empty workspace panel until manual re-selection |
+| BUG-012 | 2026-06-22 | WebView | Added a resilient Issue 5 fallback: on the configured WebUI origin, if the workspace toggle is tapped from a blank root state and the panel still remains hidden, Android redirects to the last known trusted in-app session route so WebUI can rehydrate workspace state instead of no-oping |
+| REL-008 | 2026-06-23 | Release | Updated Android app version metadata to `0.1.6` with `versionCode` 7; narrowed GitHub release automation to build and publish only `hermes-webui-v0.1.6-github.apk`, with tag/version validation before release upload |
+| REL-009 | 2026-06-23 | Release | Added a separate manual GitHub Actions workflow (`.github/workflows/play-aab.yml`) that builds/signs a release AAB, renames it to `hermes-webui-v<version>.aab`, and uploads it as an artifact for manual Google Play Console upload until automated Play publishing is wired |
+| REL-010 | 2026-06-22 | Release | Incremented Android app version metadata to `0.1.7` with `versionCode` 8 and documented release-note scoping so app releases summarize runtime/app changes only (excluding workflow-only and docs-only updates) |
 
 ---
 

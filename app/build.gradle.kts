@@ -3,8 +3,8 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import java.io.File
 import java.util.Properties
 
-val appVersionName = "0.1.5"
-val distributionArtifactName = "hermes-webui-v$appVersionName"
+val appVersionName = "0.1.7"
+val githubReleaseArtifactName = "hermes-webui-v$appVersionName-github"
 
 val keystoreProperties = Properties().apply {
     val propertiesFile = rootProject.file("keystore.properties")
@@ -72,9 +72,9 @@ plugins {
     alias(libs.plugins.kotlin.compose)
 }
 
-// Use the product name, not the repository name, in generated APK/AAB artifacts.
+// Use the product name, version, and GitHub channel in generated APK artifacts.
 base {
-    archivesName.set(distributionArtifactName)
+    archivesName.set(githubReleaseArtifactName)
 }
 
 extensions.configure<ApplicationExtension>("android") {
@@ -96,7 +96,7 @@ extensions.configure<ApplicationExtension>("android") {
         applicationId = "com.hermeswebui.android"
         minSdk = 26
         targetSdk = 37
-        versionCode = 6
+        versionCode = 8
         versionName = appVersionName
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -176,40 +176,32 @@ fun copyFirstExistingArtifact(candidates: List<File>, target: File) {
 
 tasks.register("stageGithubReleaseApk") {
     group = "distribution"
-    description = "Builds the release APK and stages it as build/release/$distributionArtifactName.apk."
+    description = "Builds the release APK and stages it as build/release/$githubReleaseArtifactName.apk."
     dependsOn(verifyReleaseSigning)
     dependsOn("assembleRelease")
 
     doLast {
         copyFirstExistingArtifact(
             candidates = listOf(
-                layout.buildDirectory.file("outputs/apk/release/$distributionArtifactName-release.apk").get().asFile,
+                layout.buildDirectory.file("outputs/apk/release/$githubReleaseArtifactName-release.apk").get().asFile,
                 layout.buildDirectory.file("outputs/apk/release/app-release.apk").get().asFile
             ),
-            target = rootProject.layout.buildDirectory.file("release/$distributionArtifactName.apk").get().asFile
-        )
-    }
-}
-
-tasks.register("stagePlayReleaseBundle") {
-    group = "distribution"
-    description = "Builds the release app bundle and stages it as build/release/$distributionArtifactName.aab."
-    dependsOn(verifyReleaseSigning)
-    dependsOn("bundleRelease")
-
-    doLast {
-        copyFirstExistingArtifact(
-            candidates = listOf(
-                layout.buildDirectory.file("outputs/bundle/release/$distributionArtifactName-release.aab").get().asFile,
-                layout.buildDirectory.file("outputs/bundle/release/app-release.aab").get().asFile
-            ),
-            target = rootProject.layout.buildDirectory.file("release/$distributionArtifactName.aab").get().asFile
+            target = rootProject.layout.buildDirectory.file("release/$githubReleaseArtifactName.apk").get().asFile
         )
     }
 }
 
 tasks.register("stageReleaseArtifacts") {
     group = "distribution"
-    description = "Builds and stages release APK/AAB artifacts with product/version filenames."
-    dependsOn("stageGithubReleaseApk", "stagePlayReleaseBundle")
+    description = "Builds and stages the GitHub release APK with a product/version filename."
+    dependsOn("stageGithubReleaseApk")
+}
+
+tasks.register("printReleaseVersionName") {
+    group = "help"
+    description = "Prints the Android release versionName used by GitHub release automation."
+
+    doLast {
+        println(appVersionName)
+    }
 }

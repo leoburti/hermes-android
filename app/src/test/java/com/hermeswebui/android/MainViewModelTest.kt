@@ -92,6 +92,38 @@ class MainViewModelTest {
         assertThat(store.clearSessionCalled).isTrue()
     }
 
+    @Test
+    fun `url visited persists last url for client-side navigation`() {
+        val store = FakeSettingsStore()
+        val viewModel = MainViewModel(store, defaultServerUrl, defaultDashboardUrl)
+        val sessionUrl = "$defaultServerUrl/session-123"
+
+        viewModel.onPageStarted(defaultServerUrl)
+        viewModel.onPageCommitVisible(defaultServerUrl)
+        viewModel.onPageFinished(defaultServerUrl)
+        viewModel.onUrlVisited(sessionUrl)
+
+        val state = viewModel.uiState.value
+        assertThat(state.currentUrl).isEqualTo(sessionUrl)
+        assertThat(store.lastLoadedUrl).isEqualTo(sessionUrl)
+    }
+
+    @Test
+    fun `url visited does not persist when remember last url is false`() {
+        val store = FakeSettingsStore()
+        val viewModel = MainViewModel(store, defaultServerUrl, defaultDashboardUrl)
+        val dashboardUrl = "https://dashboard.example.com"
+
+        viewModel.onPageStarted(defaultServerUrl)
+        viewModel.onPageCommitVisible(defaultServerUrl)
+        viewModel.onPageFinished(defaultServerUrl)
+        viewModel.onUrlVisited(dashboardUrl, rememberLastUrl = false)
+
+        val state = viewModel.uiState.value
+        assertThat(state.currentUrl).isEqualTo(dashboardUrl)
+        assertThat(store.lastLoadedUrl).isEqualTo(defaultServerUrl)
+    }
+
     private class FakeSettingsStore : SettingsStore {
         private var settings = AppSettings(
             serverUrl = "https://hermes.example.com",

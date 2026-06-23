@@ -238,6 +238,7 @@ class MainActivity : ComponentActivity() {
     private var notificationPermissionRequestInFlight = false
     private var microphoneFallbackScriptHandler: ScriptHandler? = null
     private var notificationBridgeScriptHandler: ScriptHandler? = null
+    private var routeRecoveryScriptHandler: ScriptHandler? = null
 
     private val serverUrlValidator = ServerUrlValidator()
 
@@ -552,6 +553,17 @@ class MainActivity : ComponentActivity() {
                         rememberLastUrl = !matchesConfiguredDashboardRoute(url)
                     )
                     CookieManager.getInstance().flush()
+                }
+
+                override fun doUpdateVisitedHistory(view: WebView?, url: String?, isReload: Boolean) {
+                    super.doUpdateVisitedHistory(view, url, isReload)
+                    val visitedUrl = url?.takeIf { it.isNotBlank() } ?: return
+                    // Ignore internal/non-web URLs; persist only trusted Hermes WebUI routes.
+                    if (!urlPolicy.isAllowed(visitedUrl)) return
+                    if (!matchesConfiguredWebUiRoute(visitedUrl)) return
+
+                    // Persist SPA/history route changes so cold starts restore the active session route.
+                    viewModel.onUrlVisited(url = visitedUrl, rememberLastUrl = true)
                 }
 
                 override fun onReceivedError(
@@ -911,6 +923,7 @@ class MainActivity : ComponentActivity() {
         view.evaluateJavascript(HermesWebViewViewportFixScript, null)
         view.evaluateJavascript(HermesWebUiMicrophoneFallbackScript, null)
         view.evaluateJavascript(buildHermesWebUiNotificationBridgeScript(), null)
+        view.evaluateJavascript(buildHermesWebUiRouteRecoveryScript(), null)
     }
 
 
@@ -920,6 +933,7 @@ class MainActivity : ComponentActivity() {
 
         microphoneFallbackScriptHandler?.remove()
         notificationBridgeScriptHandler?.remove()
+        routeRecoveryScriptHandler?.remove()
         microphoneFallbackScriptHandler = runCatching {
             WebViewCompat.addDocumentStartJavaScript(
                 view,
@@ -934,6 +948,126 @@ class MainActivity : ComponentActivity() {
                 setOf(originRule)
             )
         }.getOrNull()
+        routeRecoveryScriptHandler = runCatching {
+            WebViewCompat.addDocumentStartJavaScript(
+                view,
+                buildHermesWebUiRouteRecoveryScript(),
+                setOf(originRule)
+            )
+        }.getOrNull()
+    }
+
+    private fun buildHermesWebUiRouteRecoveryScript(): String {
+        val lastUrl = settingsRepository.getLastLoadedUrl().orEmpty()
+        val settings = viewModel.uiState.value.settings
+        val recoveryUrl = if (lastUrl.isNotBlank() && UrlOrigins.hasSameOrigin(lastUrl, settings.serverUrl)) {
+            val normalizedLastPath = UrlOrigins.normalizedPath(lastUrl)
+            if (normalizedLastPath.isBlank()) "" else lastUrl
+        } else {
+            ""
+        }
+        val quotedLastUrl = JSONObject.quote(recoveryUrl)
+        return """
+            (function() {
+              try {
+                if (window.__hermesAndroidRouteRecoveryInstalled) return;
+                window.__hermesAndroidRouteRecoveryInstalled = true;
+                var recoveryUrl = $quotedLastUrl;
+                var panelIsHidden = function() {
+                  try {
+                    var rightPanel = document.querySelector('.rightpanel');
+                    if (!rightPanel) return true;
+                    var style = window.getComputedStyle(rightPanel);
+                    return style.display === 'none' || rightPanel.getBoundingClientRect().width === 0;
+                  } catch (_) { return true; }
+                };
+                var fallbackOpenAttr = 'data-hermes-android-fallback-open';
+                var fallbackWidthAttr = 'data-hermes-android-fallback-width';
+                var forcePanelOpen = function() {
+                  try {
+                    var rightPanel = document.querySelector('.rightpanel');
+                    if (!rightPanel) return;
+                    var existingInlineWidth = (rightPanel.style && rightPanel.style.width) || '';
+                    if (!rightPanel.getAttribute(fallbackWidthAttr)) {
+                      rightPanel.setAttribute(fallbackWidthAttr, existingInlineWidth);
+                    }
+                    rightPanel.style.setProperty('display', 'block', 'important');
+                    rightPanel.style.setProperty('visibility', 'visible', 'important');
+                    rightPanel.style.setProperty('opacity', '1', 'important');
+                    if (!rightPanel.style.width || rightPanel.getBoundingClientRect().width === 0) {
+                      var width = Math.max(320, Math.min(520, Math.round(window.innerWidth * 0.42)));
+                      rightPanel.style.setProperty('width', String(width) + 'px', 'important');
+                      rightPanel.style.setProperty('max-width', String(width) + 'px', 'important');
+                    }
+                    document.body.classList.add('workspace-open', 'rightpanel-open');
+                    rightPanel.setAttribute(fallbackOpenAttr, '1');
+                  } catch (_) {}
+                };
+                var releaseFallbackPanelStyles = function() {
+                  try {
+                    var rightPanel = document.querySelector('.rightpanel');
+                    if (!rightPanel) return;
+                    if (rightPanel.getAttribute(fallbackOpenAttr) !== '1') return;
+                    var previousWidth = rightPanel.getAttribute(fallbackWidthAttr);
+                    rightPanel.style.removeProperty('display');
+                    rightPanel.style.removeProperty('visibility');
+                    rightPanel.style.removeProperty('opacity');
+                    rightPanel.style.removeProperty('max-width');
+                    if (previousWidth != null) {
+                      rightPanel.style.width = previousWidth;
+                    } else {
+                      rightPanel.style.removeProperty('width');
+                    }
+                    rightPanel.removeAttribute(fallbackOpenAttr);
+                    rightPanel.removeAttribute(fallbackWidthAttr);
+                  } catch (_) {}
+                };
+                var scheduleFallbackRelease = function() {
+                  window.setTimeout(function() {
+                    releaseFallbackPanelStyles();
+                  }, 0);
+                };
+                window.addEventListener('click', function(event) {
+                  try {
+                    var target = event.target;
+                    var button = target && target.closest ? target.closest('#btnWorkspacePanelToggle') : null;
+                    if (!button) return;
+                    // If fallback opened the panel previously, release temporary styles first so
+                    // WebUI's own toggle handler can close it naturally.
+                    releaseFallbackPanelStyles();
+                    window.setTimeout(function() {
+                      try {
+                        if (!panelIsHidden()) return;
+                        forcePanelOpen();
+                        window.setTimeout(function() {
+                          if (!panelIsHidden()) return;
+                          if (recoveryUrl && window.location && window.location.href !== recoveryUrl) {
+                            window.location.href = recoveryUrl;
+                          }
+                        }, 90);
+                        if (panelIsHidden() && recoveryUrl && window.location && window.location.href !== recoveryUrl) {
+                          window.location.href = recoveryUrl;
+                        }
+                      } catch (_) {}
+                    }, 75);
+                  } catch (_) {}
+                }, true);
+                window.addEventListener('click', function(event) {
+                  try {
+                    var target = event.target;
+                    if (!target || !target.closest) return;
+                    var rightPanel = document.querySelector('.rightpanel');
+                    if (!rightPanel || rightPanel.getAttribute(fallbackOpenAttr) !== '1') return;
+                    var panelAction = target.closest('.rightpanel button, .rightpanel [role="button"], .rightpanel a');
+                    if (!panelAction) return;
+                    // After WebUI handles the click (including close), drop fallback styles
+                    // so panel visibility is controlled solely by WebUI state.
+                    scheduleFallbackRelease();
+                  } catch (_) {}
+                }, true);
+              } catch (_) {}
+            })();
+        """.trimIndent()
     }
 
     private fun buildHermesWebUiNotificationBridgeScript(): String {
