@@ -164,8 +164,10 @@ workflow changes should be made in Hermes WebUI instead.
 | REL-014 | 2026-06-23 | Release | Enhanced `.github/workflows/release.yml` GitHub Release notes: each release now includes explicit build metadata (version/tag, commit SHA, APK filename, SHA-256, workflow run URL) followed by generated GitHub notes, for both create and update paths |
 | REL-015 | 2026-06-23 | Release | Consolidated release automation into numbered workflows: `1-orchestration-release.yml` builds both signed artifacts, then fans out to `2-publish-github-apk.yml` for GitHub Releases and `3-publish-play-store-release.yml` for Google Play internal testing |
 | REL-016 | 2026-06-23 | Release | Added release workflow concurrency, exact-one artifact validation guards, and `RELEASE.md` operator guidance for manual publish retries |
- | REL-017 | 2026-06-23 | Release | Added Play Store What's New changelog generation from the same GitHub generated release notes used for GitHub Releases |
- | A-020-P1 | 2026-06-23 | Settings | Implemented Phase 1 of multi-server profile support (Issue #20): added native "Application Settings" entry point in Hermes WebUI sidebar below Help via WebView document-start shim, wired `hermes://app/settings` deep link handling to open native settings bottom sheet, injected phone-outline SVG icon for visual consistency, and validated with unit tests and emulator deployment |
+| REL-017 | 2026-06-23 | Release | Added Play Store What's New changelog generation from the same GitHub generated release notes used for GitHub Releases |
+| A-020-P1 | 2026-06-23 | Settings | Implemented Phase 1 of multi-server profile support (Issue #20): added native "Application Settings" entry point in Hermes WebUI sidebar below Help via WebView document-start shim, wired `hermes://app/settings` deep link handling to open native settings bottom sheet, injected phone-outline SVG icon for visual consistency, and validated with unit tests and emulator deployment |
+| BUG-016 | 2026-06-23 | Navigation | Fixed back button closing app on first press: implemented "press back again to exit" pattern that requires two back presses within 2 seconds to close app when no WebView history is available, prevents accidental app closure from stuck states, and shows "Press back again to exit" toast on first back press |
+| REL-018 | 2026-06-23 | Release | Updated Android app version metadata to `0.1.9` with `versionCode` 10 |
 
 
 

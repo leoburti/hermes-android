@@ -38,7 +38,7 @@ To get added, **message [@Paladin173](https://github.com/Paladin173) your Gmail 
 
 Once added, the app will appear in the Play Store for you to install and receive automatic updates.
 
-Current pre-release version: `v0.1.8`.
+Current pre-release version: `v0.1.9`.
 
 Current Android build metadata:
 

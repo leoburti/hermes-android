@@ -514,6 +514,9 @@ class MainActivity : ComponentActivity() {
 
     private val serverUrlValidator = ServerUrlValidator()
 
+    private var lastBackPressTime: Long = 0
+    private val BACK_PRESS_TIMEOUT_MS = 2000L // 2 seconds
+
     private val filePickerLauncher = registerForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
         filePathCallback?.onReceiveValue(uris.takeIf { it.isNotEmpty() }?.toTypedArray())
         filePathCallback = null
@@ -679,7 +682,17 @@ class MainActivity : ComponentActivity() {
             when {
                 uiState.isSettingsVisible -> viewModel.closeSettings()
                 webView.canGoBack() -> webView.goBack()
-                else -> onRequestExit()
+                else -> {
+                    val currentTime = System.currentTimeMillis()
+                    if (currentTime - lastBackPressTime < BACK_PRESS_TIMEOUT_MS) {
+                        // Second back press within timeout: exit app
+                        onRequestExit()
+                    } else {
+                        // First back press: show toast and reset timer
+                        lastBackPressTime = currentTime
+                        Toast.makeText(this@MainActivity, "Press back again to exit", Toast.LENGTH_SHORT).show()
+                    }
+                }
             }
         }
 
