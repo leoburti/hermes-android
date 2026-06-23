@@ -734,7 +734,7 @@ class MainActivity : ComponentActivity() {
                         onAddProfile = { name, url -> handleAddServerProfile(name, url) },
                         onDeleteProfile = { profileId -> handleDeleteServerProfile(profileId) },
                         onRenameProfile = { profileId, newName -> viewModel.renameServerProfile(profileId, newName) },
-                        onEditProfile = { profileId, newName, newUrl -> viewModel.updateServerProfile(profileId, newName, newUrl) },
+                        onEditProfile = { profileId, newName, newUrl -> handleEditServerProfile(profileId, newName, newUrl) },
                         onSwitchProfile = { profileId -> handleSwitchServerProfile(profileId) }
                     )
                 }
@@ -1728,6 +1728,15 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private fun handleEditServerProfile(profileId: String, newName: String, newUrl: String) {
+        if (!serverUrlValidator.isValid(newUrl)) {
+            Toast.makeText(this, "Server URL must be a valid http:// or https:// URL", Toast.LENGTH_LONG).show()
+            return
+        }
+        viewModel.updateServerProfile(profileId, newName, newUrl)
+        Toast.makeText(this, "Profile updated", Toast.LENGTH_SHORT).show()
+    }
+
     private fun handleDeleteServerProfile(profileId: String) {
         viewModel.deleteServerProfile(profileId)
         Toast.makeText(this, "Profile deleted", Toast.LENGTH_SHORT).show()
@@ -1735,11 +1744,19 @@ class MainActivity : ComponentActivity() {
 
     private fun handleSwitchServerProfile(profileId: String) {
         val newProfile = settingsRepository.getProfiles().firstOrNull { it.id == profileId } ?: return
+
+        // Validate the server URL before switching
+        if (!serverUrlValidator.isValid(newProfile.url)) {
+            Toast.makeText(this, "Invalid server URL: ${newProfile.url}", Toast.LENGTH_LONG).show()
+            return
+        }
+
         // Clear old server's cookies and cache
         CookieManager.getInstance().removeAllCookies(null)
         CookieManager.getInstance().flush()
         WebStorage.getInstance().deleteAllData()
         webView.clearCache(true)
+
         // Switch the profile and reload
         viewModel.switchServerProfile(profileId)
         webView.loadUrl(newProfile.url)

@@ -249,6 +249,7 @@ private fun EditProfileDialog(
 ) {
     var name by remember(currentName) { mutableStateOf(currentName) }
     var url by remember(currentUrl) { mutableStateOf(currentUrl) }
+    val isValidUrl = url.isNotBlank() && (url.startsWith("http://") || url.startsWith("https://"))
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -268,7 +269,13 @@ private fun EditProfileDialog(
                     label = { Text("Server URL") },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
-                    supportingText = { Text("HTTP or HTTPS") }
+                    supportingText = { 
+                        Text(
+                            if (!isValidUrl && url.isNotBlank()) "Must start with http:// or https://" 
+                            else "HTTP or HTTPS"
+                        )
+                    },
+                    isError = !isValidUrl && url.isNotBlank()
                 )
             }
         },
@@ -277,8 +284,8 @@ private fun EditProfileDialog(
         },
         confirmButton = {
             Button(
-                onClick = { if (name.isNotBlank() && url.isNotBlank()) onConfirm(name, url) },
-                enabled = name.isNotBlank() && url.isNotBlank()
+                onClick = { if (name.isNotBlank() && isValidUrl) onConfirm(name, url) },
+                enabled = name.isNotBlank() && isValidUrl
             ) {
                 Text("Save")
             }
@@ -293,6 +300,7 @@ private fun AddServerProfileDialog(
 ) {
     var profileName by remember { mutableStateOf("") }
     var profileUrl by remember { mutableStateOf("") }
+    val isValidUrl = profileUrl.isNotBlank() && (profileUrl.startsWith("http://") || profileUrl.startsWith("https://"))
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -313,7 +321,13 @@ private fun AddServerProfileDialog(
                     placeholder = { Text("https://hermes.example.com") },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
-                    supportingText = { Text("HTTP or HTTPS") }
+                    supportingText = { 
+                        Text(
+                            if (!isValidUrl && profileUrl.isNotBlank()) "Must start with http:// or https://" 
+                            else "HTTP or HTTPS"
+                        )
+                    },
+                    isError = !isValidUrl && profileUrl.isNotBlank()
                 )
             }
         },
@@ -323,12 +337,12 @@ private fun AddServerProfileDialog(
         confirmButton = {
             Button(
                 onClick = {
-                    if (profileUrl.isNotBlank()) {
+                    if (isValidUrl) {
                         onConfirm(profileName.ifBlank { profileUrl }, profileUrl)
                         onDismiss()
                     }
                 },
-                enabled = profileUrl.isNotBlank()
+                enabled = isValidUrl
             ) {
                 Text("Add")
             }
