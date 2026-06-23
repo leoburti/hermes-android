@@ -1,0 +1,177 @@
+name: 1 - Orchestration Release
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-release-artifacts:
+    name: 1 - Build Release Artifacts
+    runs-on: ubuntu-latest
+
+    outputs:
+      version_name: ${{ steps.release_version.outputs.version_name }}
+      tag_name: ${{ steps.release_version.outputs.tag_name }}
+      commit_sha: ${{ github.sha }}
+      github_apk_artifact_name: ${{ steps.artifact_names.outputs.github_apk_artifact_name }}
+      play_aab_artifact_name: ${{ steps.artifact_names.outputs.play_aab_artifact_name }}
+
+    env:
+      ANDROID_KEYSTORE_FILE: ${{ github.workspace }}/signing/upload-keystore.jks
+      ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+      ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+      ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: Validate release secrets
+        shell: bash
+        run: |
+          test -n "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" || { echo "Missing ANDROID_KEYSTORE_BASE64"; exit 1; }
+          test -n "$ANDROID_KEYSTORE_PASSWORD" || { echo "Missing ANDROID_KEYSTORE_PASSWORD"; exit 1; }
+          test -n "$ANDROID_KEY_ALIAS" || { echo "Missing ANDROID_KEY_ALIAS"; exit 1; }
+          test -n "$ANDROID_KEY_PASSWORD" || { echo "Missing ANDROID_KEY_PASSWORD"; exit 1; }
+          test -n "${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON_BASE64 }}" || { echo "Missing GOOGLE_PLAY_SERVICE_ACCOUNT_JSON_BASE64"; exit 1; }
+
+      - name: Decode release keystore
+        shell: bash
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/signing"
+          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > "$ANDROID_KEYSTORE_FILE"
+          test -f "$ANDROID_KEYSTORE_FILE" || { echo "Keystore file was not created"; exit 1; }
+          echo "Keystore file size: $(wc -c < "$ANDROID_KEYSTORE_FILE") bytes"
+
+      - name: Read Android release version
+        id: release_version
+        shell: bash
+        run: |
+          chmod +x ./gradlew
+          version_name="$(./gradlew -q :app:printReleaseVersionName)"
+          test -n "$version_name" || { echo "Gradle returned an empty versionName"; exit 1; }
+          echo "version_name=$version_name" >> "$GITHUB_OUTPUT"
+          echo "tag_name=v$version_name" >> "$GITHUB_OUTPUT"
+          echo "Android versionName: $version_name"
+
+      - name: Validate release tag matches app version
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: |
+          expected_tag="${{ steps.release_version.outputs.tag_name }}"
+          if [ "$GITHUB_REF_NAME" != "$expected_tag" ]; then
+            echo "Release tag $GITHUB_REF_NAME does not match Android versionName ${{ steps.release_version.outputs.version_name }}."
+            echo "Update app/build.gradle.kts or push tag $expected_tag."
+            exit 1
+          fi
+
+      - name: Build signed release artifacts
+        shell: bash
+        run: |
+          ./gradlew test :app:stageGithubReleaseApk :app:bundleRelease --no-daemon
+
+          src_aab="$(find app/build/outputs/bundle/release -maxdepth 1 -type f -name '*.aab' | head -n 1)"
+          test -n "$src_aab" || { echo "No release AAB found"; exit 1; }
+          cp "$src_aab" "build/release/hermes-webui-v${{ steps.release_version.outputs.version_name }}.aab"
+
+          find build/release -maxdepth 1 -type f -name '*.apk' -print
+          find build/release -maxdepth 1 -type f -name '*.aab' -print
+
+      - name: Validate staged release artifacts
+        shell: bash
+        run: |
+          apk_count="$(find build/release -maxdepth 1 -type f -name 'hermes-webui-v*-github.apk' | wc -l | tr -d ' ')"
+          aab_count="$(find build/release -maxdepth 1 -type f -name 'hermes-webui-v*.aab' | wc -l | tr -d ' ')"
+
+          if [ "$apk_count" != "1" ]; then
+            echo "Expected exactly one GitHub APK artifact, found $apk_count."
+            find build/release -maxdepth 1 -type f -name '*.apk' -print
+            exit 1
+          fi
+
+          if [ "$aab_count" != "1" ]; then
+            echo "Expected exactly one Play AAB artifact, found $aab_count."
+            find build/release -maxdepth 1 -type f -name '*.aab' -print
+            exit 1
+          fi
+
+      - name: Set artifact names
+        id: artifact_names
+        shell: bash
+        run: |
+          echo "github_apk_artifact_name=hermes-webui-v${{ steps.release_version.outputs.version_name }}-github-apk" >> "$GITHUB_OUTPUT"
+          echo "play_aab_artifact_name=hermes-webui-v${{ steps.release_version.outputs.version_name }}-play-aab" >> "$GITHUB_OUTPUT"
+
+      - name: Write manual publish retry details
+        shell: bash
+        run: |
+          cat >> "$GITHUB_STEP_SUMMARY" <<EOF
+          ## Manual Publish Retry Details
+
+          Use these values if one publish target fails after artifact upload:
+
+          - Build run ID: \`${{ github.run_id }}\`
+          - Commit SHA: \`${{ github.sha }}\`
+          - Version name: \`${{ steps.release_version.outputs.version_name }}\`
+          - Tag name: \`${{ steps.release_version.outputs.tag_name }}\`
+          - GitHub APK artifact: \`${{ steps.artifact_names.outputs.github_apk_artifact_name }}\`
+          - Play AAB artifact: \`${{ steps.artifact_names.outputs.play_aab_artifact_name }}\`
+          EOF
+
+      - name: Upload signed GitHub APK artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ steps.artifact_names.outputs.github_apk_artifact_name }}
+          path: build/release/*-github.apk
+          if-no-files-found: error
+
+      - name: Upload Play AAB artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ steps.artifact_names.outputs.play_aab_artifact_name }}
+          path: build/release/*.aab
+          if-no-files-found: error
+
+  publish-github-release:
+    name: 2 - Publish GitHub APK
+    needs: build-release-artifacts
+    uses: ./.github/workflows/2-publish-github-apk.yml
+    permissions:
+      contents: write
+      actions: read
+    with:
+      artifact_name: ${{ needs.build-release-artifacts.outputs.github_apk_artifact_name }}
+      build_run_id: ${{ github.run_id }}
+      commit_sha: ${{ needs.build-release-artifacts.outputs.commit_sha }}
+      tag_name: ${{ needs.build-release-artifacts.outputs.tag_name }}
+      version_name: ${{ needs.build-release-artifacts.outputs.version_name }}
+
+  publish-play-store:
+    name: 3 - Publish Play Store Release
+    needs: build-release-artifacts
+    uses: ./.github/workflows/3-publish-play-store-release.yml
+    permissions:
+      contents: read
+      actions: read
+    secrets: inherit
+    with:
+      artifact_name: ${{ needs.build-release-artifacts.outputs.play_aab_artifact_name }}
+      build_run_id: ${{ github.run_id }}
+      version_name: ${{ needs.build-release-artifacts.outputs.version_name }}

@@ -1,0 +1,85 @@
+name: 3 - Publish Play Store Release
+
+on:
+  workflow_call:
+    inputs:
+      artifact_name:
+        required: true
+        type: string
+      build_run_id:
+        required: true
+        type: string
+      version_name:
+        required: true
+        type: string
+    secrets:
+      GOOGLE_PLAY_SERVICE_ACCOUNT_JSON_BASE64:
+        required: true
+  workflow_dispatch:
+    inputs:
+      artifact_name:
+        description: Play AAB artifact name from the build run.
+        required: true
+        type: string
+      build_run_id:
+        description: GitHub Actions run ID that created the AAB artifact.
+        required: true
+        type: string
+      version_name:
+        description: Android versionName, such as 0.1.8.
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: publish-play-store-${{ inputs.version_name }}
+  cancel-in-progress: false
+
+jobs:
+  publish-play-store:
+    name: 3 - Publish Play Store Release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Validate Play service account secret
+        shell: bash
+        run: |
+          test -n "${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON_BASE64 }}" || { echo "Missing GOOGLE_PLAY_SERVICE_ACCOUNT_JSON_BASE64"; exit 1; }
+
+      - name: Download Play AAB artifact
+        uses: actions/download-artifact@v7
+        with:
+          name: ${{ inputs.artifact_name }}
+          path: build/release
+          run-id: ${{ inputs.build_run_id }}
+          github-token: ${{ github.token }}
+
+      - name: Validate Play AAB artifact
+        shell: bash
+        run: |
+          aab_count="$(find build/release -maxdepth 1 -type f -name 'hermes-webui-v*.aab' | wc -l | tr -d ' ')"
+          if [ "$aab_count" != "1" ]; then
+            echo "Expected exactly one Play AAB artifact, found $aab_count."
+            find build/release -maxdepth 1 -type f -print
+            exit 1
+          fi
+
+      - name: Decode Google Play service account
+        shell: bash
+        run: |
+          mkdir -p signing
+          echo "${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON_BASE64 }}" | base64 --decode > signing/google-play-service-account.json
+          test -f signing/google-play-service-account.json || { echo "Google Play service account file was not created"; exit 1; }
+
+      - name: Upload AAB to Google Play internal testing
+        uses: r0adkll/upload-google-play@v1
+        with:
+          serviceAccountJson: signing/google-play-service-account.json
+          packageName: com.hermeswebui.android
+          releaseFiles: build/release/*.aab
+          tracks: internal
+          status: completed
+          releaseName: Hermes WebUI Android v${{ inputs.version_name }}

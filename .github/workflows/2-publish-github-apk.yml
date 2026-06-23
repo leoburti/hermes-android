@@ -1,0 +1,135 @@
+name: 2 - Publish GitHub APK
+
+on:
+  workflow_call:
+    inputs:
+      artifact_name:
+        required: true
+        type: string
+      build_run_id:
+        required: true
+        type: string
+      commit_sha:
+        required: true
+        type: string
+      tag_name:
+        required: true
+        type: string
+      version_name:
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      artifact_name:
+        description: GitHub APK artifact name from the build run.
+        required: true
+        type: string
+      build_run_id:
+        description: GitHub Actions run ID that created the APK artifact.
+        required: true
+        type: string
+      commit_sha:
+        description: Commit SHA used by the build run.
+        required: true
+        type: string
+      tag_name:
+        description: Release tag, such as v0.1.8.
+        required: true
+        type: string
+      version_name:
+        description: Android versionName, such as 0.1.8.
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: publish-github-apk-${{ inputs.tag_name }}
+  cancel-in-progress: false
+
+jobs:
+  publish-github-release:
+    name: 2 - Publish GitHub APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download GitHub APK artifact
+        uses: actions/download-artifact@v7
+        with:
+          name: ${{ inputs.artifact_name }}
+          path: build/release
+          run-id: ${{ inputs.build_run_id }}
+          github-token: ${{ github.token }}
+
+      - name: Validate GitHub APK artifact
+        shell: bash
+        run: |
+          apk_count="$(find build/release -maxdepth 1 -type f -name 'hermes-webui-v*-github.apk' | wc -l | tr -d ' ')"
+          if [ "$apk_count" != "1" ]; then
+            echo "Expected exactly one GitHub APK artifact, found $apk_count."
+            find build/release -maxdepth 1 -type f -print
+            exit 1
+          fi
+
+      - name: Build release notes body
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag_name }}
+          RELEASE_COMMIT: ${{ inputs.commit_sha }}
+          VERSION_NAME: ${{ inputs.version_name }}
+        run: |
+          apk_path="$(find build/release -maxdepth 1 -type f -name 'hermes-webui-v*-github.apk' | head -n 1)"
+          test -n "$apk_path" || { echo "No staged GitHub APK found"; exit 1; }
+          apk_name="$(basename "$apk_path")"
+          apk_sha256="$(sha256sum "$apk_path" | awk '{print $1}')"
+          run_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${{ inputs.build_run_id }}"
+
+          generated_notes="$(gh api "repos/$GITHUB_REPOSITORY/releases/generate-notes" \
+            -f tag_name="$RELEASE_TAG" \
+            -f target_commitish="$RELEASE_COMMIT" \
+            --jq '.body')"
+
+          cat > build/release/release-notes.md <<EOF
+          ## Release Details
+
+          - Version: \
+            `$VERSION_NAME`
+          - Tag: \
+            `$RELEASE_TAG`
+          - Commit: \
+            `$RELEASE_COMMIT`
+          - Artifact: \
+            `$apk_name`
+          - SHA-256: \
+            `$apk_sha256`
+          - Workflow run: \
+            $run_url
+
+          ---
+
+          $generated_notes
+          EOF
+
+      - name: Publish GitHub release APK
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag_name }}
+          RELEASE_COMMIT: ${{ inputs.commit_sha }}
+        run: |
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release edit "$RELEASE_TAG" \
+              --repo "$GITHUB_REPOSITORY" \
+              --target "$RELEASE_COMMIT" \
+              --notes-file build/release/release-notes.md
+            gh release upload "$RELEASE_TAG" build/release/*.apk --repo "$GITHUB_REPOSITORY" --clobber
+          else
+            gh release create "$RELEASE_TAG" build/release/*.apk \
+              --repo "$GITHUB_REPOSITORY" \
+              --target "$RELEASE_COMMIT" \
+              --title "Hermes WebUI Android $RELEASE_TAG" \
+              --notes-file build/release/release-notes.md
+          fi

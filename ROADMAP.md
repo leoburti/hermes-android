@@ -3,7 +3,7 @@
 > Maintenance-focused Android wrapper for Hermes Web UI. The core wrapper is
 > good as-is; product UI and workflow changes belong in Hermes WebUI.
 >
-> Last updated: 2026-06-22
+> Last updated: 2026-06-23
 
 ---
 
@@ -22,7 +22,7 @@
 | Native navigation | Done - WebUI-owned dashboard link integration and deep links |
 | Server health probing | Done - `/api/status` probe to distinguish server-down from content errors |
 | Browser notifications | Done - WebUI Notification API bridge, Android runtime permission, notification channel, and trusted WebUI tap routing |
-| Native distribution polish | Done - app identity and signed GitHub APK release automation are wired for local builds plus GitHub Actions |
+| Native distribution polish | Done - app identity and signed GitHub APK plus Play AAB release automation are wired for local builds plus GitHub Actions |
 | Maintenance posture | Stable - accept Android-wrapper fixes, compatibility updates, dependency updates, and release maintenance |
 | Native feature expansion | Deferred - revisit only for Android-specific needs with a clear WebUI/API boundary |
 
@@ -158,6 +158,8 @@ workflow changes should be made in Hermes WebUI instead.
 | REL-013 | 2026-06-23 | Release | Split GitHub APK builds into a separate `github` release build type with `applicationIdSuffix = ".github"` and `versionNameSuffix = "-github"` so sideloaded GitHub builds can install beside Google Play builds |
 | BUG-015 | 2026-06-23 | WebView | Fixed Issue 9: added bounded auto-retry loop on server error — polls `/api/status` with 1 s → 2 s → 4 s → 10 s cap backoff for up to 60 s, auto-reloads when server comes back, shows "Reconnecting…" on the error screen, cancels cleanly on manual Retry / new navigation / settings save |
 | REL-014 | 2026-06-23 | Release | Enhanced `.github/workflows/release.yml` GitHub Release notes: each release now includes explicit build metadata (version/tag, commit SHA, APK filename, SHA-256, workflow run URL) followed by generated GitHub notes, for both create and update paths |
+| REL-015 | 2026-06-23 | Release | Consolidated release automation into numbered workflows: `1-orchestration-release.yml` builds both signed artifacts, then fans out to `2-publish-github-apk.yml` for GitHub Releases and `3-publish-play-store-release.yml` for Google Play internal testing |
+| REL-016 | 2026-06-23 | Release | Added release workflow concurrency, exact-one artifact validation guards, and `RELEASE.md` operator guidance for manual publish retries |
 
 ---
 

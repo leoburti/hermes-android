@@ -182,6 +182,7 @@ Add these repository secrets before running the release workflow:
 - `ANDROID_KEYSTORE_PASSWORD`
 - `ANDROID_KEY_ALIAS`
 - `ANDROID_KEY_PASSWORD`
+- `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON_BASE64`
 
 To create the Base64 keystore value on Windows PowerShell:
 
@@ -189,25 +190,29 @@ To create the Base64 keystore value on Windows PowerShell:
 [Convert]::ToBase64String([IO.File]::ReadAllBytes("C:/path/to/upload-keystore.jks")) | Set-Clipboard
 ```
 
-The workflow in `.github/workflows/release.yml` can then:
+The workflow in `.github/workflows/1-orchestration-release.yml` can then:
 
 - build and sign one GitHub release APK with application ID `com.hermeswebui.android.github`
-- upload it as a workflow artifact on manual runs
-- create or update a GitHub Release automatically from manual runs using the Gradle Android `versionName`
-- attach the APK to a GitHub Release automatically when you push a matching `v*` tag
+- build and sign one Play release AAB with application ID `com.hermeswebui.android`
+- upload both files as workflow artifacts
+- fan out to separate GitHub and Play publishing jobs after the build succeeds
+- create or update a GitHub Release using the Gradle Android `versionName`
+- attach only the GitHub APK to the GitHub Release
+- upload only the Play AAB to the Google Play internal testing track
 - include a release body with explicit build details (version/tag, commit SHA, APK filename, SHA-256, workflow run URL) plus generated GitHub notes
 - fail a tag release when the tag, such as `v0.1.8`, does not match the Android `versionName`
 - keep release notes scoped to app/runtime changes in that release (exclude workflow-only and docs-only updates)
 
-For Google Play internal testing upload, run the manual workflow in
-`.github/workflows/play-aab.yml`.
+The publish steps live in reusable/manual repair workflows:
 
-It will:
+- `.github/workflows/2-publish-github-apk.yml` publishes the APK artifact to GitHub Releases.
+- `.github/workflows/3-publish-play-store-release.yml` uploads the AAB artifact to Google Play internal testing.
 
-- build and sign one release AAB
-- rename it to `hermes-webui-v<version>.aab`
-- upload it as a GitHub Actions artifact for local inspection
-- upload it to the Google Play internal testing track using the configured Play service account
+If either publish target fails after the build artifact upload succeeds, rerun
+only the failed publish workflow manually with the build run ID, artifact name,
+version name, and commit SHA shown in the failed release run.
+
+See [RELEASE.md](./RELEASE.md) for the release operator checklist.
 
 Google Play listing assets:
 
@@ -235,7 +240,7 @@ The GitHub APK is a separate Android app variant: it installs as
 `com.hermeswebui.android` application ID and plain `<version>` version name, so
 both channels can be installed on the same device at the same time.
 
-Before each GitHub release, increment both `appVersionName` and `versionCode` in
+Before each release, increment both `appVersionName` and `versionCode` in
 `app/build.gradle.kts`. Manual workflow runs create or update `v<versionName>`
 automatically; tag-triggered runs must use the matching tag, for example
 `v0.1.8`.
@@ -283,4 +288,5 @@ points.
 
 - [ROADMAP.md](./ROADMAP.md) - status, wishlist, forward work, and progress
 - [ARCHITECTURE.md](./ARCHITECTURE.md) - runtime flow and security model
+- [RELEASE.md](./RELEASE.md) - release workflow checklist and retry procedure
 - [AGENTS.md](./AGENTS.md) - instructions for AI assistants working in this repo

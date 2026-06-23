@@ -40,9 +40,12 @@
 - The signed release workflow uses Node 24-compatible GitHub Actions majors to avoid deprecated Node 20 runner execution.
 - `:app:assembleRelease`, `:app:stageGithubReleaseApk`, and `:app:stageReleaseArtifacts` fail fast when signing credentials are missing or the keystore file path is invalid, preventing unsigned distribution artifacts from being staged as release-ready output.
 - `:app:stageGithubReleaseApk` builds the signed `github` build type and copies it into the ignored root `build/release/` output folder as `hermes-webui-v<version>-github.apk` so generated binaries do not live beside source files.
-- The GitHub APK release workflow (`.github/workflows/release.yml`) builds only that APK. The GitHub build type uses `applicationIdSuffix = ".github"` and `versionNameSuffix = "-github"`, so it installs beside the Play build as `com.hermeswebui.android.github` and reports a channel-specific version such as `0.1.8-github`.
-- Manual GitHub APK runs create or update release `v<versionName>` from the checked-out commit; tag-triggered releases require the tag to match the Gradle Android `versionName` exactly, such as `v0.1.8`, before upload.
-- A separate manual Play upload workflow (`.github/workflows/play-aab.yml`) builds/signs the official release AAB, uploads `hermes-webui-v<version>.aab` as a downloadable workflow artifact, and submits the same `com.hermeswebui.android` AAB to the Google Play internal testing track with the configured Play service account.
+- The release workflow (`.github/workflows/1-orchestration-release.yml`) builds both signed artifacts in one run: the `github` APK and the official Play AAB. The GitHub build type uses `applicationIdSuffix = ".github"` and `versionNameSuffix = "-github"`, so it installs beside the Play build as `com.hermeswebui.android.github` and reports a channel-specific version such as `0.1.8-github`.
+- Manual release runs create or update release `v<versionName>` from the checked-out commit; tag-triggered releases require the tag to match the Gradle Android `versionName` exactly, such as `v0.1.8`, before upload.
+- After artifacts are uploaded, `.github/workflows/1-orchestration-release.yml` fans out to reusable publish workflows in parallel: `.github/workflows/2-publish-github-apk.yml` publishes only `hermes-webui-v<version>-github.apk` to GitHub Releases, and `.github/workflows/3-publish-play-store-release.yml` submits only `hermes-webui-v<version>.aab` to the Google Play internal testing track with the configured Play service account.
+- Release workflows use concurrency groups so duplicate runs for the same ref or target version do not publish over each other.
+- The build and publish workflows validate that exactly one matching APK or AAB exists before upload or publication.
+- The publish workflows also support manual dispatch with the build run ID and artifact metadata so a failed GitHub or Play publish can be retried without rebuilding both release artifacts.
 
 ## Security model
 
