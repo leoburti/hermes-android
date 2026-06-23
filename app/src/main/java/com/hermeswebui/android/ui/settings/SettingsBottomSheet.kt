@@ -35,6 +35,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.draw.alpha
 import com.hermeswebui.android.data.ServerProfile
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -49,7 +50,8 @@ fun SettingsBottomSheet(
     onAddProfile: (String, String) -> Unit = { _, _ -> },
     onDeleteProfile: (String) -> Unit = {},
     onRenameProfile: (String, String) -> Unit = { _, _ -> },
-    onEditProfile: (String, String, String) -> Unit = { _, _, _ -> }
+    onEditProfile: (String, String, String) -> Unit = { _, _, _ -> },
+    onSwitchProfile: (String) -> Unit = { _ -> }
 ) {
     var serverUrl by remember(initialServerUrl, isConfigured) {
         mutableStateOf(if (isConfigured) initialServerUrl else "")
@@ -186,10 +188,12 @@ fun SettingsBottomSheet(
                                 else
                                     MaterialTheme.colorScheme.surfaceVariant
                             ),
-                            modifier = Modifier.combinedClickable(
-                                onClick = {},
-                                onLongClick = { profileToEdit = profile }
-                            )
+                            modifier = Modifier
+                                .combinedClickable(
+                                    onClick = { if (!isCurrent) onSwitchProfile(profile.id) },
+                                    onLongClick = { profileToEdit = profile }
+                                )
+                                .alpha(if (isCurrent) 1f else 0.9f)
                         )
                         HorizontalDivider(
                             color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
@@ -199,7 +203,7 @@ fun SettingsBottomSheet(
             }
 
             Text(
-                text = "Long-press a server to edit its name or URL.",
+                text = "Tap a server to switch. Long-press to edit.",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )

@@ -734,7 +734,8 @@ class MainActivity : ComponentActivity() {
                         onAddProfile = { name, url -> handleAddServerProfile(name, url) },
                         onDeleteProfile = { profileId -> handleDeleteServerProfile(profileId) },
                         onRenameProfile = { profileId, newName -> viewModel.renameServerProfile(profileId, newName) },
-                        onEditProfile = { profileId, newName, newUrl -> viewModel.updateServerProfile(profileId, newName, newUrl) }
+                        onEditProfile = { profileId, newName, newUrl -> viewModel.updateServerProfile(profileId, newName, newUrl) },
+                        onSwitchProfile = { profileId -> handleSwitchServerProfile(profileId) }
                     )
                 }
             }
@@ -1730,6 +1731,20 @@ class MainActivity : ComponentActivity() {
     private fun handleDeleteServerProfile(profileId: String) {
         viewModel.deleteServerProfile(profileId)
         Toast.makeText(this, "Profile deleted", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun handleSwitchServerProfile(profileId: String) {
+        val newProfile = settingsRepository.getProfiles().firstOrNull { it.id == profileId } ?: return
+        // Clear old server's cookies and cache
+        CookieManager.getInstance().removeAllCookies(null)
+        CookieManager.getInstance().flush()
+        WebStorage.getInstance().deleteAllData()
+        webView.clearCache(true)
+        // Switch the profile and reload
+        viewModel.switchServerProfile(profileId)
+        webView.loadUrl(newProfile.url)
+        viewModel.closeSettings()
+        Toast.makeText(this, "Switched to ${newProfile.name}", Toast.LENGTH_SHORT).show()
     }
 
     private fun openInExternalBrowser(url: String) {

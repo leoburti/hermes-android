@@ -198,6 +198,22 @@ class MainViewModel(
          refreshProfiles()
      }
 
+     fun switchServerProfile(profileId: String) {
+         val profile = settingsRepositoryImpl?.getProfiles()?.firstOrNull { it.id == profileId } ?: return
+         settingsRepositoryImpl?.setActiveProfile(profileId)
+         refreshProfiles()
+         // Trigger a reload with the new server URL
+         _uiState.update {
+             it.copy(
+                 currentUrl = profile.url,
+                 isLoading = true,
+                 hasLoadedContent = false,
+                 errorMessage = null,
+                 isOffline = false
+             )
+         }
+     }
+
      private fun refreshProfiles() {
          settingsRepositoryImpl?.let { repo ->
              _serverProfiles.update { repo.getProfiles() }
