@@ -53,6 +53,11 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.dynamicDarkColorScheme
+import androidx.compose.material3.dynamicLightColorScheme
+import androidx.compose.material3.lightColorScheme
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -94,9 +99,11 @@ private data class NotificationPermissionReply(
     val replyProxy: JavaScriptReplyProxy
 )
 
-private val HermesColorScheme = darkColorScheme(
+private val HermesDarkColorScheme = darkColorScheme(
     primary = Color(0xFFFFD700),
     onPrimary = Color(0xFF16110A),
+    primaryContainer = Color(0xFF4A3800),
+    onPrimaryContainer = Color(0xFFFFDF6B),
     secondary = Color(0xFF4DD0E1),
     onSecondary = Color(0xFF061417),
     background = Color(0xFF0D0D1A),
@@ -105,8 +112,29 @@ private val HermesColorScheme = darkColorScheme(
     onSurface = Color(0xFFFFF8DC),
     surfaceVariant = Color(0xFF1A1A2E),
     onSurfaceVariant = Color(0xFFE6E0C8),
+    outline = Color(0xFF5A5A7A),
+    outlineVariant = Color(0xFF3A3A55),
     error = Color(0xFFEF5350),
     onError = Color(0xFF1F0505)
+)
+
+private val HermesLightColorScheme = lightColorScheme(
+    primary = Color(0xFF7A5900),
+    onPrimary = Color(0xFFFFFFFF),
+    primaryContainer = Color(0xFFFFDF6B),
+    onPrimaryContainer = Color(0xFF261A00),
+    secondary = Color(0xFF006874),
+    onSecondary = Color(0xFFFFFFFF),
+    background = Color(0xFFFFFBF0),
+    onBackground = Color(0xFF1C1B00),
+    surface = Color(0xFFFFF8F2),
+    onSurface = Color(0xFF1C1B00),
+    surfaceVariant = Color(0xFFEEEAD8),
+    onSurfaceVariant = Color(0xFF4B4737),
+    outline = Color(0xFF7C7866),
+    outlineVariant = Color(0xFFCFC9B6),
+    error = Color(0xFFBA1A1A),
+    onError = Color(0xFFFFFFFF)
 )
 
 private val HermesWebViewViewportFixScript = """
@@ -655,7 +683,14 @@ class MainActivity : ComponentActivity() {
             }
         }
 
-        MaterialTheme(colorScheme = HermesColorScheme) {
+        val isDark = isSystemInDarkTheme()
+        val colorScheme = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            val ctx = LocalContext.current
+            if (isDark) dynamicDarkColorScheme(ctx) else dynamicLightColorScheme(ctx)
+        } else {
+            if (isDark) HermesDarkColorScheme else HermesLightColorScheme
+        }
+        MaterialTheme(colorScheme = colorScheme) {
             Surface(
                 modifier = Modifier.fillMaxSize(),
                 color = MaterialTheme.colorScheme.background
@@ -698,7 +733,8 @@ class MainActivity : ComponentActivity() {
                         serverProfiles = serverProfiles,
                         onAddProfile = { name, url -> handleAddServerProfile(name, url) },
                         onDeleteProfile = { profileId -> handleDeleteServerProfile(profileId) },
-                        onRenameProfile = { profileId, newName -> viewModel.renameServerProfile(profileId, newName) }
+                        onRenameProfile = { profileId, newName -> viewModel.renameServerProfile(profileId, newName) },
+                        onEditProfile = { profileId, newName, newUrl -> viewModel.updateServerProfile(profileId, newName, newUrl) }
                     )
                 }
             }

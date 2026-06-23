@@ -137,6 +137,17 @@ class SettingsRepository(context: Context) : SettingsStore {
         saveProfiles(profiles)
     }
 
+    fun updateProfile(profileId: String, newName: String, newUrl: String) {
+        val profiles = getProfiles().map { profile ->
+            if (profile.id == profileId) profile.copy(
+                name = newName.trim().ifBlank { newUrl },
+                url = newUrl.trim()
+            )
+            else profile
+        }
+        saveProfiles(profiles)
+    }
+
     fun getProfiles(): List<ServerProfile> {
         val json = sharedPreferences.getString(KEY_SERVER_PROFILES, "[]") ?: "[]"
         return try {

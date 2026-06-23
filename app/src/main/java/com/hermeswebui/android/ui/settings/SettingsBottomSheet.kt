@@ -5,10 +5,8 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -50,7 +48,8 @@ fun SettingsBottomSheet(
     serverProfiles: List<ServerProfile> = emptyList(),
     onAddProfile: (String, String) -> Unit = { _, _ -> },
     onDeleteProfile: (String) -> Unit = {},
-    onRenameProfile: (String, String) -> Unit = { _, _ -> }
+    onRenameProfile: (String, String) -> Unit = { _, _ -> },
+    onEditProfile: (String, String, String) -> Unit = { _, _, _ -> }
 ) {
     var serverUrl by remember(initialServerUrl, isConfigured) {
         mutableStateOf(if (isConfigured) initialServerUrl else "")
@@ -58,33 +57,31 @@ fun SettingsBottomSheet(
     var isServerUrlFocused by remember { mutableStateOf(false) }
     var showAddProfileDialog by remember { mutableStateOf(false) }
     var profileToDelete by remember { mutableStateOf<ServerProfile?>(null) }
-    var profileToRename by remember { mutableStateOf<ServerProfile?>(null) }
+    var profileToEdit by remember { mutableStateOf<ServerProfile?>(null) }
 
     if (showAddProfileDialog) {
         AddServerProfileDialog(
-            onConfirm = { name, url ->
-                onAddProfile(name, url)
-                showAddProfileDialog = false
-            },
+            onConfirm = { name, url -> onAddProfile(name, url); showAddProfileDialog = false },
             onDismiss = { showAddProfileDialog = false }
         )
     }
 
-    if (profileToRename != null) {
-        RenameProfileDialog(
-            currentName = profileToRename!!.name,
-            onConfirm = { newName ->
-                onRenameProfile(profileToRename!!.id, newName)
-                profileToRename = null
+    if (profileToEdit != null) {
+        EditProfileDialog(
+            currentName = profileToEdit!!.name,
+            currentUrl = profileToEdit!!.url,
+            onConfirm = { newName, newUrl ->
+                onEditProfile(profileToEdit!!.id, newName, newUrl)
+                profileToEdit = null
             },
-            onDismiss = { profileToRename = null }
+            onDismiss = { profileToEdit = null }
         )
     }
 
     if (profileToDelete != null) {
         AlertDialog(
             onDismissRequest = { profileToDelete = null },
-            title = { Text("Delete server profile?") },
+            title = { Text("Delete server?") },
             text = { Text("Remove \"${profileToDelete!!.name}\" from your saved servers?") },
             dismissButton = {
                 TextButton(onClick = { profileToDelete = null }) { Text("Cancel") }
@@ -130,10 +127,9 @@ fun SettingsBottomSheet(
                 Text("Connect")
             }
         } else {
-            // Configured: unified profile list — active first, then others
             Text(text = "Servers", style = MaterialTheme.typography.titleSmall)
 
-            // Determine active profile and sort: active first
+            // Active profile = URL match first, then isActive flag
             val activeProfile = serverProfiles.firstOrNull { profile ->
                 profile.url.trimEnd('/').equals(initialServerUrl.trimEnd('/'), ignoreCase = true)
             } ?: serverProfiles.firstOrNull { it.isActive }
@@ -141,70 +137,58 @@ fun SettingsBottomSheet(
                 serverProfiles.filter { it.id != activeProfile?.id }
 
             if (sortedProfiles.isEmpty()) {
-                // No profiles at all — show current server as a read-only synthetic entry
-                Column(modifier = Modifier.fillMaxWidth()) {
-                    ListItem(
-                        headlineContent = { Text("Current server", maxLines = 1) },
-                        supportingContent = {
-                            Text(
-                                initialServerUrl,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                style = MaterialTheme.typography.bodySmall
-                            )
-                        },
-                        trailingContent = {
-                            CurrentBadge()
-                        },
-                        colors = ListItemDefaults.colors(
-                            containerColor = MaterialTheme.colorScheme.surfaceVariant
+                // Edge case: server configured but no profiles yet
+                ListItem(
+                    headlineContent = { Text("Current server", maxLines = 1) },
+                    supportingContent = {
+                        Text(
+                            initialServerUrl, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                            style = MaterialTheme.typography.bodySmall
                         )
+                    },
+                    trailingContent = { CurrentBadge() },
+                    colors = ListItemDefaults.colors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant
                     )
-                }
+                )
             } else {
                 Column(modifier = Modifier.fillMaxWidth()) {
                     sortedProfiles.forEach { profile ->
                         val isCurrent = profile.id == activeProfile?.id
                         ListItem(
                             headlineContent = {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text(
-                                        profile.name,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                        modifier = Modifier.weight(1f, fill = false)
-                                    )
-                                    if (isCurrent) {
-                                        Spacer(Modifier.width(8.dp))
-                                        CurrentBadge()
-                                    }
-                                }
+                                Text(
+                                    profile.name,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
                             },
                             supportingContent = {
                                 Text(
-                                    profile.url,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
+                                    profile.url, maxLines = 1, overflow = TextOverflow.Ellipsis,
                                     style = MaterialTheme.typography.bodySmall
                                 )
                             },
                             trailingContent = {
-                                IconButton(onClick = { profileToDelete = profile }) {
-                                    Icon(
-                                        imageVector = Icons.Default.Delete,
-                                        contentDescription = "Delete \"${profile.name}\""
-                                    )
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    if (isCurrent) CurrentBadge()
+                                    IconButton(onClick = { profileToDelete = profile }) {
+                                        Icon(
+                                            imageVector = Icons.Default.Delete,
+                                            contentDescription = "Delete \"${profile.name}\""
+                                        )
+                                    }
                                 }
                             },
                             colors = ListItemDefaults.colors(
                                 containerColor = if (isCurrent)
-                                    MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)
+                                    MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
                                 else
                                     MaterialTheme.colorScheme.surfaceVariant
                             ),
                             modifier = Modifier.combinedClickable(
                                 onClick = {},
-                                onLongClick = { profileToRename = profile }
+                                onLongClick = { profileToEdit = profile }
                             )
                         )
                         HorizontalDivider(
@@ -215,7 +199,7 @@ fun SettingsBottomSheet(
             }
 
             Text(
-                text = "Long-press a server to rename it.",
+                text = "Long-press a server to edit its name or URL.",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -253,34 +237,46 @@ private fun CurrentBadge() {
 }
 
 @Composable
-private fun RenameProfileDialog(
+private fun EditProfileDialog(
     currentName: String,
-    onConfirm: (String) -> Unit,
+    currentUrl: String,
+    onConfirm: (String, String) -> Unit,
     onDismiss: () -> Unit
 ) {
     var name by remember(currentName) { mutableStateOf(currentName) }
+    var url by remember(currentUrl) { mutableStateOf(currentUrl) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Rename server") },
+        title = { Text("Edit server") },
         text = {
-            OutlinedTextField(
-                value = name,
-                onValueChange = { name = it },
-                label = { Text("Server name") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth()
-            )
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text("Server name") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedTextField(
+                    value = url,
+                    onValueChange = { url = it },
+                    label = { Text("Server URL") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    supportingText = { Text("HTTP or HTTPS") }
+                )
+            }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) { Text("Cancel") }
         },
         confirmButton = {
             Button(
-                onClick = { if (name.isNotBlank()) onConfirm(name) },
-                enabled = name.isNotBlank()
+                onClick = { if (name.isNotBlank() && url.isNotBlank()) onConfirm(name, url) },
+                enabled = name.isNotBlank() && url.isNotBlank()
             ) {
-                Text("Rename")
+                Text("Save")
             }
         }
     )
@@ -296,7 +292,7 @@ private fun AddServerProfileDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Add server profile") },
+        title = { Text("Add server") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 OutlinedTextField(
@@ -324,8 +320,7 @@ private fun AddServerProfileDialog(
             Button(
                 onClick = {
                     if (profileUrl.isNotBlank()) {
-                        val name = profileName.ifBlank { profileUrl }
-                        onConfirm(name, profileUrl)
+                        onConfirm(profileName.ifBlank { profileUrl }, profileUrl)
                         onDismiss()
                     }
                 },

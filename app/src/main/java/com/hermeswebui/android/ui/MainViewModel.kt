@@ -193,6 +193,11 @@ class MainViewModel(
          refreshProfiles()
      }
 
+     fun updateServerProfile(profileId: String, newName: String, newUrl: String) {
+         settingsRepositoryImpl?.updateProfile(profileId, newName, newUrl)
+         refreshProfiles()
+     }
+
      private fun refreshProfiles() {
          settingsRepositoryImpl?.let { repo ->
              _serverProfiles.update { repo.getProfiles() }
