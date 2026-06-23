@@ -228,6 +228,239 @@ private val HermesWebUiMicrophoneFallbackScript = """
      })();
 """.trimIndent()
 
+private val HermesWebUiAppSettingsEntryScript = """
+    (function() {
+      var appSettingsHref = 'hermes://app/settings';
+      var markerAttr = 'data-hermes-android-app-settings-entry';
+
+      var textContainsHelp = function(value) {
+        var normalized = String(value || '').trim().toLowerCase();
+        return normalized === 'help' || normalized.indexOf('help ') === 0 || normalized.indexOf(' help') !== -1;
+      };
+
+      var clearActiveState = function(root) {
+        if (!root || !root.querySelectorAll) return;
+        root.querySelectorAll('[aria-current], [aria-selected], .active, .selected, .is-active').forEach(function(el) {
+          el.removeAttribute('aria-current');
+          el.removeAttribute('aria-selected');
+          el.classList.remove('active');
+          el.classList.remove('selected');
+          el.classList.remove('is-active');
+        });
+      };
+
+      var stripRoutingAttributes = function(root) {
+        if (!root || !root.querySelectorAll) return;
+        var routeAttrPattern = /(route|router|nav|href|path|url|target|rel|onclick)/i;
+        root.querySelectorAll('*').forEach(function(el) {
+          var names = [];
+          for (var i = 0; i < el.attributes.length; i++) {
+            names.push(el.attributes[i].name);
+          }
+          names.forEach(function(name) {
+            if (routeAttrPattern.test(name)) {
+              el.removeAttribute(name);
+            }
+          });
+        });
+      };
+
+      var bindNativeSettingsClick = function(el) {
+        if (!el) return;
+        var openNativeSettings = function(event) {
+          if (event) {
+            event.preventDefault();
+            event.stopPropagation();
+            if (typeof event.stopImmediatePropagation === 'function') {
+              event.stopImmediatePropagation();
+            }
+          }
+          window.location.href = appSettingsHref;
+          return false;
+        };
+        el.addEventListener('click', openNativeSettings, true);
+        el.addEventListener('auxclick', openNativeSettings, true);
+        el.addEventListener('keydown', function(event) {
+          if (event.key === 'Enter' || event.key === ' ') {
+            openNativeSettings(event);
+          }
+        }, true);
+      };
+
+      var createAppIconSvg = function(className) {
+        var svgNs = 'http://www.w3.org/2000/svg';
+        var svg = document.createElementNS(svgNs, 'svg');
+        svg.setAttribute('viewBox', '0 0 24 24');
+        svg.setAttribute('fill', 'none');
+        svg.setAttribute('stroke', 'currentColor');
+        svg.setAttribute('stroke-width', '1.8');
+        svg.setAttribute('stroke-linecap', 'round');
+        svg.setAttribute('stroke-linejoin', 'round');
+        svg.setAttribute('aria-hidden', 'true');
+        if (className) svg.setAttribute('class', className);
+
+        var frame = document.createElementNS(svgNs, 'rect');
+        frame.setAttribute('x', '7');
+        frame.setAttribute('y', '2');
+        frame.setAttribute('width', '10');
+        frame.setAttribute('height', '20');
+        frame.setAttribute('rx', '2.5');
+        frame.setAttribute('ry', '2.5');
+
+        var speaker = document.createElementNS(svgNs, 'line');
+        speaker.setAttribute('x1', '10');
+        speaker.setAttribute('y1', '5');
+        speaker.setAttribute('x2', '14');
+        speaker.setAttribute('y2', '5');
+
+        var home = document.createElementNS(svgNs, 'circle');
+        home.setAttribute('cx', '12');
+        home.setAttribute('cy', '18');
+        home.setAttribute('r', '1');
+
+        svg.appendChild(frame);
+        svg.appendChild(speaker);
+        svg.appendChild(home);
+        return svg;
+      };
+
+      var applyApplicationIcon = function(interactive) {
+        if (!interactive) return;
+        var existing = interactive.querySelector('svg, i, [data-icon], [class*="icon"]');
+        var className = '';
+        if (existing && existing.getAttribute) {
+          className = existing.getAttribute('class') || '';
+        }
+        var appIcon = createAppIconSvg(className);
+        appIcon.setAttribute(markerAttr, 'icon');
+
+        if (existing && existing.parentNode) {
+          existing.parentNode.replaceChild(appIcon, existing);
+        } else {
+          interactive.insertBefore(appIcon, interactive.firstChild);
+        }
+      };
+
+      var replaceHelpLabel = function(root) {
+        var changed = false;
+        var walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null);
+        var node = walker.nextNode();
+        while (node) {
+          if (textContainsHelp(node.nodeValue)) {
+            node.nodeValue = 'Application Settings';
+            changed = true;
+          }
+          node = walker.nextNode();
+        }
+        return changed;
+      };
+
+      var forceVisibleLabel = function(root) {
+        if (!root || !root.querySelectorAll) return;
+        var changed = false;
+        root.querySelectorAll('span, p, div, strong, em').forEach(function(el) {
+          if (textContainsHelp(el.textContent)) {
+            el.textContent = 'Application Settings';
+            changed = true;
+          }
+        });
+        if (changed) return;
+        var fallback = document.createElement('span');
+        fallback.textContent = 'Application Settings';
+        fallback.setAttribute(markerAttr, 'label');
+        root.appendChild(fallback);
+      };
+
+      var findHelpInScope = function(scope) {
+        if (!scope || !scope.querySelectorAll) return null;
+        var nodes = scope.querySelectorAll('a, button, [role="button"], [role="menuitem"]');
+        for (var i = 0; i < nodes.length; i++) {
+          var node = nodes[i];
+          if (textContainsHelp(node.textContent)) return node;
+          var aria = node.getAttribute('aria-label');
+          if (textContainsHelp(aria)) return node;
+          var title = node.getAttribute('title');
+          if (textContainsHelp(title)) return node;
+        }
+        return null;
+      };
+
+      var findHelpInteractive = function() {
+        var scopedSelectors = ['.sidebar', '.rail', '.leftpanel', 'aside', 'nav'];
+        for (var i = 0; i < scopedSelectors.length; i++) {
+          var scope = document.querySelector(scopedSelectors[i]);
+          var hit = findHelpInScope(scope);
+          if (hit) return hit;
+        }
+        return findHelpInScope(document);
+      };
+
+      var ensureEntry = function() {
+        try {
+          if (document.querySelector('[' + markerAttr + '="1"]')) return;
+          var helpInteractive = findHelpInteractive();
+          if (!helpInteractive) return;
+
+          var helpContainer = helpInteractive.closest('li, [role="menuitem"], .menu-item, .nav-item, .sidebar-item, [data-menu-item]') || helpInteractive;
+          if (!helpContainer || !helpContainer.parentNode) return;
+
+          var cloned = helpContainer.cloneNode(false);
+          cloned.setAttribute(markerAttr, '1');
+          cloned.removeAttribute('id');
+          clearActiveState(cloned);
+          stripRoutingAttributes(cloned);
+
+          var helpIsInteractive = helpContainer.matches('a, button, [role="button"], [role="menuitem"]');
+          var interactive = helpIsInteractive ? cloned : helpInteractive.cloneNode(false);
+          if (!helpIsInteractive) {
+            interactive.removeAttribute('id');
+            clearActiveState(interactive);
+            stripRoutingAttributes(interactive);
+            cloned.appendChild(interactive);
+          }
+
+          if (!interactive) return;
+
+          interactive.textContent = '';
+          var label = document.createElement('span');
+          label.textContent = 'Application Settings';
+          label.setAttribute(markerAttr, 'label');
+          interactive.appendChild(label);
+          applyApplicationIcon(interactive);
+
+          if (interactive.tagName && interactive.tagName.toLowerCase() === 'a') {
+            interactive.setAttribute('href', appSettingsHref);
+          } else {
+            interactive.setAttribute('role', 'link');
+            interactive.setAttribute('tabindex', '0');
+          }
+          bindNativeSettingsClick(interactive);
+          interactive.setAttribute('aria-label', 'Application Settings');
+          interactive.setAttribute('title', 'Application Settings');
+          interactive.removeAttribute('aria-current');
+          interactive.removeAttribute('aria-selected');
+          interactive.classList.remove('active');
+          interactive.classList.remove('selected');
+          interactive.classList.remove('is-active');
+          interactive.setAttribute(markerAttr, '1');
+          bindNativeSettingsClick(cloned);
+
+          helpContainer.parentNode.insertBefore(cloned, helpContainer.nextSibling);
+        } catch (_) {}
+      };
+
+      ensureEntry();
+
+      if (!window.__hermesAndroidAppSettingsEntryInstalled) {
+        window.__hermesAndroidAppSettingsEntryInstalled = true;
+        var observer = new MutationObserver(function() { ensureEntry(); });
+        observer.observe(document.documentElement || document.body, { childList: true, subtree: true });
+        window.addEventListener('pageshow', ensureEntry, { passive: true });
+        window.addEventListener('focus', ensureEntry, { passive: true });
+      }
+    })();
+""".trimIndent()
+
 
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -244,6 +477,7 @@ class MainActivity : ComponentActivity() {
     private var microphoneFallbackScriptHandler: ScriptHandler? = null
     private var notificationBridgeScriptHandler: ScriptHandler? = null
     private var routeRecoveryScriptHandler: ScriptHandler? = null
+    private var appSettingsEntryScriptHandler: ScriptHandler? = null
 
     private var activeOAuthPopup: WebView? = null
     private var oauthFlowTimeoutMs: Long = 0
@@ -293,7 +527,7 @@ class MainActivity : ComponentActivity() {
         settingsRepository = SettingsRepository(applicationContext)
         viewModel = ViewModelProvider(
             this,
-            MainViewModelFactory(settingsRepository, defaultUrl, defaultDashboardUrl)
+            MainViewModelFactory(settingsRepository, settingsRepository, defaultUrl, defaultDashboardUrl)
         )[MainViewModel::class.java]
         urlPolicy = UrlPolicy(viewModel.uiState.value.settings.allowedHosts)
 
@@ -397,6 +631,7 @@ class MainActivity : ComponentActivity() {
         onRequestExit: () -> Unit
     ) {
         val uiState by viewModel.uiState.collectAsState()
+        val serverProfiles by viewModel.serverProfiles.collectAsState()
         val snackbarHostState = remember { SnackbarHostState() }
 
         LaunchedEffect(uiState.pendingShareBanner) {
@@ -455,7 +690,10 @@ class MainActivity : ComponentActivity() {
                         isConfigured = uiState.settings.isConfigured,
                         onSave = onSaveSettings,
                         onResetSession = onResetSession,
-                        onDismiss = { viewModel.closeSettings() }
+                        onDismiss = { viewModel.closeSettings() },
+                        serverProfiles = serverProfiles,
+                        onAddProfile = { name, url -> handleAddServerProfile(name, url) },
+                        onDeleteProfile = { profileId -> handleDeleteServerProfile(profileId) }
                     )
                 }
             }
@@ -498,6 +736,10 @@ class MainActivity : ComponentActivity() {
                             request: WebResourceRequest?
                         ): Boolean {
                             val target = request?.url?.toString() ?: return true
+                            if (handleAppSettingsNavigation(target)) {
+                                popup.destroy()
+                                return true
+                            }
 
                             // If this is an OAuth/OIDC URL, keep the popup alive to preserve PKCE state.
                             // OAuth flows require multiple redirects with persistent cookies.
@@ -584,6 +826,7 @@ class MainActivity : ComponentActivity() {
             webViewClient = object : WebViewClient() {
                 override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
                     val target = request?.url?.toString() ?: return true
+                    if (handleAppSettingsNavigation(target)) return true
                     if (matchesConfiguredDashboardRoute(target)) {
                         openDashboardInCustomTab(target)
                         return true
@@ -988,6 +1231,7 @@ class MainActivity : ComponentActivity() {
         view.evaluateJavascript(HermesWebUiMicrophoneFallbackScript, null)
         view.evaluateJavascript(buildHermesWebUiNotificationBridgeScript(), null)
         view.evaluateJavascript(buildHermesWebUiRouteRecoveryScript(), null)
+        view.evaluateJavascript(HermesWebUiAppSettingsEntryScript, null)
     }
 
 
@@ -998,6 +1242,7 @@ class MainActivity : ComponentActivity() {
         microphoneFallbackScriptHandler?.remove()
         notificationBridgeScriptHandler?.remove()
         routeRecoveryScriptHandler?.remove()
+        appSettingsEntryScriptHandler?.remove()
         microphoneFallbackScriptHandler = runCatching {
             WebViewCompat.addDocumentStartJavaScript(
                 view,
@@ -1019,6 +1264,23 @@ class MainActivity : ComponentActivity() {
                 setOf(originRule)
             )
         }.getOrNull()
+        appSettingsEntryScriptHandler = runCatching {
+            WebViewCompat.addDocumentStartJavaScript(
+                view,
+                HermesWebUiAppSettingsEntryScript,
+                setOf(originRule)
+            )
+        }.getOrNull()
+    }
+
+    private fun handleAppSettingsNavigation(url: String?): Boolean {
+        val parsed = runCatching { Uri.parse(url) }.getOrNull() ?: return false
+        if (parsed.scheme != "hermes") return false
+        if (parsed.host != "app") return false
+        val path = parsed.path?.trimEnd('/')
+        if (path != "/settings") return false
+        viewModel.openSettings()
+        return true
     }
 
     private fun buildHermesWebUiRouteRecoveryScript(): String {
@@ -1409,6 +1671,24 @@ class MainActivity : ComponentActivity() {
         webView.clearCache(true)
         webView.clearFormData()
         webView.loadUrl(viewModel.uiState.value.settings.serverUrl)
+    }
+
+    private fun handleAddServerProfile(name: String, url: String) {
+        if (!serverUrlValidator.isValid(url)) {
+            Toast.makeText(this, "Server URL must be a valid http:// or https:// URL", Toast.LENGTH_LONG).show()
+            return
+        }
+        val profile = viewModel.addServerProfile(name, url)
+        if (profile != null) {
+            Toast.makeText(this, "Server profile \"${profile.name}\" added", Toast.LENGTH_SHORT).show()
+        } else {
+            Toast.makeText(this, "Failed to add profile", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun handleDeleteServerProfile(profileId: String) {
+        viewModel.deleteServerProfile(profileId)
+        Toast.makeText(this, "Profile deleted", Toast.LENGTH_SHORT).show()
     }
 
     private fun openInExternalBrowser(url: String) {

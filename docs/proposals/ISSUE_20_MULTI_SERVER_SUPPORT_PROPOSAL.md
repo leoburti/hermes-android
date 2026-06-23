@@ -70,34 +70,40 @@ This keeps the Android wrapper as a thin, secure multi-server companion to Herme
 
 #### Scope
 
-- Add encrypted data model for server profiles.
-- Persist multiple named server configurations.
-- Extend `SettingsBottomSheet` UI to display, add, edit, and delete profiles.
-- Add active-server selector and radio UI.
+- Add unencrypted data model for server profiles (URLs and names, no secrets).
+- Persist multiple named server configurations in `SharedPreferences`.
+- Extend `SettingsBottomSheet` UI following Android Material Design guidelines.
+- Display list of servers with "Add new server" button.
 - Support migration from single-server to multi-server schema.
+- Only one profile can be active at a time (tracked in settings).
 
 #### Candidate implementation
 
 - **Data model**
   - New `ServerProfile` data class: `id`, `name`, `url`, `createdAt`, `isActive`.
-  - Store in `SharedPreferences` as encrypted JSON array (or individual entries with versioned keys).
+  - Store in `SharedPreferences` as unencrypted JSON array (e.g., `KEY_SERVER_PROFILES`).
   
 - **SettingsRepository**
   - Add `ServerProfile` CRUD methods: `addProfile()`, `updateProfile()`, `deleteProfile()`, `getProfiles()`, `setActiveProfile()`, `getActiveProfile()`.
   - Increment `KEY_LAST_MIGRATION_VERSION` and add migration block to convert single server URL → `activeProfile + profilesList`.
-  - Preserve backward compatibility: if `lastLoadedUrl` exists and profiles list is empty, migrate to single unnamed profile.
+  - Preserve backward compatibility: if `lastLoadedUrl` exists and profiles list is empty, migrate to single unnamed "Default" profile.
 
 - **SettingsBottomSheet**
-  - Add "Server Profiles" section with list of profiles.
-  - Each row: profile name, indicator if active, delete icon.
-  - "Add Profile" button opens dialog: name input + URL input + validate URL + save.
-  - Tap profile to set active (radio select with visual indicator).
-  - Long-press or delete icon to remove (confirm dialog for non-active; warn if active).
-  - Display currently active profile with highlight/radio button.
+  - Add "Server Profiles" section below the URL input field.
+  - Use Material 3 ListItem composables for each server profile.
+  - Each row displays: server name and URL, with trailing delete icon.
+  - "Add new server" button (Material 3 Button) below the list.
+  - Tapping "Add new server" opens a Material 3 dialog with:
+    - Text field for server name (optional; auto-defaults to server URL if empty)
+    - Text field for server URL
+    - Validate button and Cancel button
+  - Delete by tapping trailing icon (confirm deletion with Material 3 AlertDialog).
+  - Active server is indicated by a leading radio button (for Phase 3 switching UI).
 
 - **Settings validation**
   - Reuse existing `ServerUrlValidator` for URL format and protocol validation.
   - Allow HTTP and HTTPS per `UrlPolicy`.
+  - Show validation errors in the dialog (snackbar or inline error text).
 
 #### Files touched
 
@@ -106,18 +112,19 @@ This keeps the Android wrapper as a thin, secure multi-server companion to Herme
   - Add profile CRUD, migration logic, active-profile tracking
   
 - `app/src/main/java/com/hermeswebui/android/ui/settings/SettingsBottomSheet.kt`
-  - Add profile list and dialogs
+  - Add profile list and dialogs using Material 3 components
   
 - `app/src/main/java/com/hermeswebui/android/ui/MainViewModel.kt`
   - Add observable active profile state
 
 #### Acceptance criteria
 
-- [ ] Multiple profiles can be created with valid URLs
+- [ ] Multiple profiles can be created with valid URLs and displayed in a list
 - [ ] Active profile is persisted and loaded on app restart
 - [ ] Migration from single-server to multi-server succeeds without data loss
-- [ ] Profile list UI displays with proper add/edit/delete interactions
+- [ ] Profile list UI displays with proper add/delete interactions
 - [ ] URL validation rejects invalid formats and non-allowlisted protocols
+- [ ] "Add new server" button and dialog follow Material 3 design
 - [ ] Tests verify CRUD operations and migration correctness
 
 #### Estimated effort
@@ -131,20 +138,22 @@ This keeps the Android wrapper as a thin, secure multi-server companion to Herme
 #### Scope
 
 - Implement server-switch action: load new server, clear prior session, update allowlist trust boundary.
+- Add radio-button UI to profile list (Phase 2 UI extended) so user can tap to switch.
+- Ensure only one profile is active at a time.
 - Validate that all profiles respect `UrlPolicy` allowlist rules.
 - Test profile lifecycle: add, activate, switch, delete, verify isolation.
 
 #### Candidate implementation
 
 - **Server switch trigger**
-  - User taps a profile name in the settings list or "Set Active" option.
+  - User taps radio button or "Set Active" action on a profile in the settings list.
   - `MainViewModel.switchServerProfile(profile: ServerProfile)` is called.
   
 - **Switch flow**
   - Validate profile URL against `ServerUrlValidator` and `UrlPolicy.hasSameOrigin()`.
   - If invalid, show error snackbar and skip switch.
   - Call `MainViewModel.loadServerProfile(profile: ServerProfile)`:
-    - Update `SettingsRepository.setActiveProfile(profile)`.
+    - Update `SettingsRepository.setActiveProfile(profile.id)`.
     - Clear WebView cookies, cache, and DOM storage for the prior server origin.
     - Reload WebView with new server URL (triggers document-start shim + fresh session).
     - Update internal `serverUrl` state.
@@ -158,7 +167,7 @@ This keeps the Android wrapper as a thin, secure multi-server companion to Herme
 - **Testing**
   - Unit tests for profile CRUD + active state persistence.
   - Integration tests for server switch flow, cookie clearing, and WebView reload.
-  - Edge cases: switch to same profile (no-op), delete active profile (promote to next, or empty state), rapid switches.
+  - Edge cases: switch to same profile (no-op), delete active profile (handle gracefully), rapid switches.
 
 #### Files touched
 
@@ -190,7 +199,7 @@ This keeps the Android wrapper as a thin, secure multi-server companion to Herme
 
 - **Trust boundary**: Each profile is validated against `UrlPolicy` allowlist at creation, switch, and app load time. Never allow off-list origins in profiles.
 - **Session isolation**: Switching servers must clear cookies, DOM storage, and service-worker cache for the old origin so credentials do not leak.
-- **Encrypted storage**: Profile URLs and names are encrypted with Android Keystore-backed keys in `SettingsRepository`, same as existing single-server URL.
+- **Storage**: Profile URLs and names are stored in unencrypted `SharedPreferences` (plain text OK for URLs; no secrets).
 - **No secrets in profiles**: Profile storage holds only server origin/name, not API keys, auth tokens, or session state. Auth is managed by WebUI cookies and WebView storage.
 - **Allowlist enforcement**: If allowlist is reconfigured to exclude a stored profile, subsequent app load or switch attempt must fail with clear messaging so users are not silently blocked.
 
@@ -277,19 +286,28 @@ data class ServerProfile(
 // Add to SettingsRepository class:
 
 private companion object {
-    private const val KEY_SERVER_PROFILES = "server_profiles"
-    private const val KEY_ACTIVE_PROFILE_ID = "active_profile_id"
-    // Increment when schema changes:
+    private const val KEY_SERVER_PROFILES = "server_profiles"  // Unencrypted JSON array
+    private const val KEY_ACTIVE_PROFILE_ID = "active_profile_id"  // Unencrypted ID
     private const val currentMigrationVersion = 2
 }
 
 // CRUD methods:
 fun addProfile(name: String, url: String): ServerProfile {
-    val profile = ServerProfile(name = name, url = url)
+    val profile = ServerProfile(name = name, url = url, isActive = false)
     val profiles = getProfiles().toMutableList()
     profiles.add(profile)
     saveProfiles(profiles)
     return profile
+}
+
+fun deleteProfile(profileId: String) {
+    val profiles = getProfiles().toMutableList()
+    profiles.removeAll { it.id == profileId }
+    saveProfiles(profiles)
+    // If deleted profile was active, clear active state
+    if (prefs.getString(KEY_ACTIVE_PROFILE_ID, null) == profileId) {
+        prefs.edit().remove(KEY_ACTIVE_PROFILE_ID).apply()
+    }
 }
 
 fun getProfiles(): List<ServerProfile> {
@@ -309,10 +327,10 @@ fun getActiveProfile(): ServerProfile? {
 // Migration:
 private fun runMigration() {
     val lastVersion = prefs.getInt(KEY_LAST_MIGRATION_VERSION, 0)
-    if (lastVersion < 1) {
+    if (lastVersion < 2) {
         // Migrate single URL to profiles list
         val oldUrl = prefs.getString(KEY_SERVER_URL, null)
-        if (oldUrl != null) {
+        if (oldUrl != null && getProfiles().isEmpty()) {
             val profile = ServerProfile(name = "Default", url = oldUrl, isActive = true)
             saveProfiles(listOf(profile))
             setActiveProfile(profile.id)
