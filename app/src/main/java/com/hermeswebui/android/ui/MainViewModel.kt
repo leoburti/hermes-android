@@ -17,14 +17,22 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlin.time.Duration.Companion.milliseconds
 
 class MainViewModel(
     private val settingsRepository: SettingsStore,
     private val settingsRepositoryImpl: SettingsRepository? = null,
     private val defaultUrl: String,
     private val defaultDashboardUrl: String,
+    private val nowMs: () -> Long = { System.currentTimeMillis() },
     private val serverReachabilityChecker: suspend (String) -> Boolean = HermesApiClient::isServerReachable
 ) : ViewModel() {
+    private data class DeferredPageError(
+        val message: String,
+        val isOffline: Boolean,
+        val visibleAtMs: Long
+    )
+
     private val settings = settingsRepository.getSettings(defaultUrl, defaultDashboardUrl)
 
     private val _uiState = MutableStateFlow(MainUiState(settings = settings))
@@ -43,9 +51,16 @@ class MainViewModel(
 
     private var autoRetryJob: Job? = null
     private var currentLoadHasMainFrameError = false
+    private var deferredPageError: DeferredPageError? = null
+    private var appIsBackgrounded = false
+    private var lastForegroundedAfterBackgroundAtMs: Long? = null
+
+    companion object {
+        private const val QUICK_RESUME_ERROR_GRACE_MS = 2_000L
+    }
 
     fun onPageStarted(url: String?) {
-        cancelAutoRetry()
+        cancelAutoRetry(clearDeferredPageError = true)
         currentLoadHasMainFrameError = false
         _uiState.update {
             it.copy(
@@ -59,6 +74,7 @@ class MainViewModel(
 
     fun onPageCommitVisible(url: String?) {
         if (currentLoadHasMainFrameError) return
+        deferredPageError = null
         val next = url ?: _uiState.value.currentUrl
         _uiState.update {
             it.copy(
@@ -80,20 +96,45 @@ class MainViewModel(
 
     fun onPageFinished(url: String?, rememberLastUrl: Boolean = true) {
         val next = url ?: _uiState.value.currentUrl
+        deferredPageError = null
         onUrlVisited(next, rememberLastUrl)
         _uiState.update { it.copy(isLoading = false, currentUrl = next) }
     }
 
     fun onPageError(message: String, isOffline: Boolean) {
         currentLoadHasMainFrameError = true
+        val state = _uiState.value
+        val shouldDeferErrorUi = shouldDeferErrorUi(state)
+        deferredPageError = if (shouldDeferErrorUi) {
+            DeferredPageError(
+                message = message,
+                isOffline = isOffline,
+                visibleAtMs = nowMs() + QUICK_RESUME_ERROR_GRACE_MS
+            )
+        } else {
+            null
+        }
+
         _uiState.update {
             it.copy(
                 isLoading = false,
-                errorMessage = message,
-                isOffline = isOffline
+                errorMessage = if (shouldDeferErrorUi) null else message,
+                isOffline = isOffline,
+                isReconnecting = shouldDeferErrorUi
             )
         }
         startAutoRetry()
+    }
+
+    fun onAppBackgrounded() {
+        appIsBackgrounded = true
+    }
+
+    fun onAppForegrounded() {
+        if (appIsBackgrounded) {
+            lastForegroundedAfterBackgroundAtMs = nowMs()
+        }
+        appIsBackgrounded = false
     }
 
     /** Starts the bounded auto-retry polling loop.
@@ -107,34 +148,43 @@ class MainViewModel(
         autoRetryJob?.cancel()
         val serverUrl = _uiState.value.settings.serverUrl
         if (serverUrl.isBlank()) return
+        val deferredErrorSnapshot = deferredPageError
 
         autoRetryJob = viewModelScope.launch {
             var intervalMs = 1_000L
             val maxIntervalMs = 10_000L
-            val deadlineMs = System.currentTimeMillis() + 60_000L
+            var elapsedRetryMs = 0L
+            val maxRetryDurationMs = 60_000L
             _uiState.update { it.copy(isReconnecting = true) }
 
-            while (System.currentTimeMillis() < deadlineMs) {
-                delay(intervalMs)
+            while (elapsedRetryMs < maxRetryDurationMs) {
+                delay(intervalMs.milliseconds)
+                elapsedRetryMs += intervalMs
                 if (serverReachabilityChecker(serverUrl)) {
+                    deferredPageError = null
                     _uiState.update { it.copy(isReconnecting = false) }
                     _autoReloadEvent.tryEmit(Unit)
                     return@launch
                 }
+                promoteDeferredErrorIfReady(deferredErrorSnapshot)
                 // Server still unreachable — confirm offline state and back off.
                 _uiState.update { it.copy(isOffline = true) }
                 intervalMs = (intervalMs * 2).coerceAtMost(maxIntervalMs)
             }
 
             // Timed out after ~60 s: give up, leave error screen, stop spinning.
+            promoteDeferredErrorIfReady(deferredErrorSnapshot, force = true)
             _uiState.update { it.copy(isReconnecting = false) }
         }
     }
 
     /** Cancels any active auto-retry loop and clears the reconnecting indicator. */
-    fun cancelAutoRetry() {
+    fun cancelAutoRetry(clearDeferredPageError: Boolean = false) {
         autoRetryJob?.cancel()
         autoRetryJob = null
+        if (clearDeferredPageError) {
+            deferredPageError = null
+        }
         _uiState.update { it.copy(isReconnecting = false) }
     }
 
@@ -144,9 +194,36 @@ class MainViewModel(
      */
     fun resumeAutoRetryIfNeeded() {
         val state = _uiState.value
-        if (state.errorMessage == null || state.isLoading) return
+        if ((state.errorMessage == null && deferredPageError == null) || state.isLoading) return
         if (autoRetryJob?.isActive == true) return
         startAutoRetry()
+    }
+
+    private fun shouldDeferErrorUi(state: MainUiState): Boolean {
+        val lastForegrounded = lastForegroundedAfterBackgroundAtMs ?: return false
+        if (appIsBackgrounded) return false
+        if (!state.hasLoadedContent) return false
+        if (state.errorMessage != null) return false
+        return nowMs() - lastForegrounded <= QUICK_RESUME_ERROR_GRACE_MS
+    }
+
+    private fun promoteDeferredErrorIfReady(
+        pending: DeferredPageError?,
+        force: Boolean = false
+    ) {
+        if (pending == null) return
+        if (!force && nowMs() < pending.visibleAtMs) return
+        deferredPageError = null
+        _uiState.update { state ->
+            if (state.errorMessage != null) {
+                state
+            } else {
+                state.copy(
+                    errorMessage = pending.message,
+                    isOffline = pending.isOffline
+                )
+            }
+        }
     }
 
     private var sharedText: String? = null
@@ -199,8 +276,9 @@ class MainViewModel(
      }
 
      fun switchServerProfile(profileId: String) {
-         val profile = settingsRepositoryImpl?.getProfiles()?.firstOrNull { it.id == profileId } ?: return
-         settingsRepositoryImpl?.setActiveProfile(profileId)
+         val repo = settingsRepositoryImpl ?: return
+         val profile = repo.getProfiles().firstOrNull { it.id == profileId } ?: return
+         repo.setActiveProfile(profileId)
          refreshProfiles()
          // Trigger a reload with the new server URL
          _uiState.update {
@@ -229,7 +307,7 @@ class MainViewModel(
     }
 
     fun saveAppUrls(serverUrl: String, dashboardUrl: String) {
-        cancelAutoRetry()
+        cancelAutoRetry(clearDeferredPageError = true)
         settingsRepository.saveAppUrls(serverUrl, dashboardUrl)
         val refreshed = settingsRepository.getSettings(defaultUrl, defaultDashboardUrl)
         _uiState.update {
@@ -246,7 +324,7 @@ class MainViewModel(
     }
 
     fun resetSession() {
-        cancelAutoRetry()
+        cancelAutoRetry(clearDeferredPageError = true)
         settingsRepository.clearWebSession()
         _uiState.update {
             it.copy(
@@ -257,5 +335,9 @@ class MainViewModel(
                 currentUrl = it.settings.serverUrl
             )
         }
+    }
+
+    override fun onCleared() {
+        cancelAutoRetry(clearDeferredPageError = true)
     }
 }

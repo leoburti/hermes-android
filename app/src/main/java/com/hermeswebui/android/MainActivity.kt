@@ -610,12 +610,16 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         if (::webView.isInitialized) {
+            viewModel.onAppForegrounded()
             updateWebNotificationPermissionState()
             viewModel.resumeAutoRetryIfNeeded()
         }
     }
 
     override fun onPause() {
+        if (::webView.isInitialized) {
+            viewModel.onAppBackgrounded()
+        }
         super.onPause()
         // If OAuth flow has timed out, clean up the popup to prevent resource leaks.
         cleanupExpiredOAuthPopup()

@@ -98,6 +98,7 @@ Requirements:
 - Explicitly configured Official Hermes Dashboard links open in a Chrome Custom Tab with minimal browser UI
 - Deep link support: `hermes://session/{id}` navigates to Hermes sessions
 - Cold-start restore keeps the active Hermes session/workspace route when the app process is restarted, with a WebUI-origin-scoped workspace-button recovery fallback that reloads the last known in-app session route if the panel is tapped from a blank root state
+- Short app switches now preserve the current WebView and briefly favor silent reconnect over immediately replacing the page with the native error screen, reducing resume flash when Hermes reconnects quickly after backgrounding
 - Server health probing on WebView errors to distinguish server-down from content errors
 - First-run settings flow for the Hermes WebUI URL; the dashboard URL is managed only by WebUI Settings > System
 - Back handling, pull-to-refresh, loading, offline, and error states, including direct server-URL recovery from the native error screen
@@ -291,4 +292,6 @@ points.
 - [ARCHITECTURE.md](./ARCHITECTURE.md) - runtime flow and security model
 - [RELEASE.md](./RELEASE.md) - release workflow checklist and retry procedure
 - [ISSUE_10_BACKGROUND_EXECUTION_PROPOSAL.md](./docs/proposals/ISSUE_10_BACKGROUND_EXECUTION_PROPOSAL.md) - phased implementation proposal for background continuity, ongoing activity notifications, and tray approvals (Issue 10)
+- [ISSUE_10_BACKGROUND_EXECUTION_WORKPLAN.md](./docs/proposals/ISSUE_10_BACKGROUND_EXECUTION_WORKPLAN.md) - execution workplan with staged PR slices, decision gates, and verification targets for Issue 10
+- [ISSUE_10_STAGE0_DISCOVERY.md](./docs/proposals/ISSUE_10_STAGE0_DISCOVERY.md) - Stage 0 discovery notes capturing verified current behavior, required contracts, and decision checklist before implementation
 - [AGENTS.md](./AGENTS.md) - instructions for AI assistants working in this repo

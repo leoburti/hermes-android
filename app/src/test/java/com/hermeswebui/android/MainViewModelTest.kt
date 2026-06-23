@@ -297,6 +297,96 @@ class MainViewModelTest {
         assertThat(viewModel.uiState.value.isReconnecting).isFalse()
     }
 
+    @Test
+    fun `quick resume error defers native error UI while reconnecting`() = runTest(testDispatcher) {
+        var now = 10_000L
+        val viewModel = MainViewModel(
+            FakeSettingsStore(),
+            null,
+            defaultServerUrl,
+            defaultDashboardUrl,
+            nowMs = { now },
+            serverReachabilityChecker = { false }
+        )
+
+        viewModel.onPageStarted(defaultServerUrl)
+        viewModel.onPageCommitVisible(defaultServerUrl)
+        viewModel.onPageFinished(defaultServerUrl)
+
+        viewModel.onAppBackgrounded()
+        now += 500L
+        viewModel.onAppForegrounded()
+        viewModel.onPageError("net::ERR_CONNECTION_RESET", isOffline = false)
+        runCurrent()
+
+        val state = viewModel.uiState.value
+        assertThat(state.hasLoadedContent).isTrue()
+        assertThat(state.errorMessage).isNull()
+        assertThat(state.isReconnecting).isTrue()
+    }
+
+    @Test
+    fun `deferred quick resume error becomes visible after grace period when reconnect fails`() = runTest(testDispatcher) {
+        var now = 20_000L
+        val viewModel = MainViewModel(
+            FakeSettingsStore(),
+            null,
+            defaultServerUrl,
+            defaultDashboardUrl,
+            nowMs = { now },
+            serverReachabilityChecker = {
+                now += 100L
+                false
+            }
+        )
+
+        viewModel.onPageStarted(defaultServerUrl)
+        viewModel.onPageCommitVisible(defaultServerUrl)
+        viewModel.onPageFinished(defaultServerUrl)
+
+        viewModel.onAppBackgrounded()
+        now += 300L
+        viewModel.onAppForegrounded()
+        viewModel.onPageError("net::ERR_CONNECTION_RESET", isOffline = true)
+        runCurrent()
+        assertThat(viewModel.uiState.value.errorMessage).isNull()
+
+        now += 1_001L
+        advanceTimeBy(1_001L)
+        runCurrent()
+        assertThat(viewModel.uiState.value.errorMessage).isNull()
+
+        now += 2_001L
+        advanceTimeBy(2_001L)
+        runCurrent()
+        assertThat(viewModel.uiState.value.errorMessage).isEqualTo("net::ERR_CONNECTION_RESET")
+        assertThat(viewModel.uiState.value.isOffline).isTrue()
+    }
+
+    @Test
+    fun `first load error does not defer native error UI`() = runTest(testDispatcher) {
+        var now = 30_000L
+        val viewModel = MainViewModel(
+            FakeSettingsStore(),
+            null,
+            defaultServerUrl,
+            defaultDashboardUrl,
+            nowMs = { now },
+            serverReachabilityChecker = { false }
+        )
+
+        viewModel.onAppBackgrounded()
+        now += 500L
+        viewModel.onAppForegrounded()
+        viewModel.onPageError("net::ERR_CONNECTION_REFUSED", isOffline = true)
+        runCurrent()
+
+        val state = viewModel.uiState.value
+        assertThat(state.hasLoadedContent).isFalse()
+        assertThat(state.errorMessage).isEqualTo("net::ERR_CONNECTION_REFUSED")
+        assertThat(state.isReconnecting).isTrue()
+    }
+
     private class FakeSettingsStore : SettingsStore {
         private var settings = AppSettings(
             serverUrl = "https://hermes.example.com",

@@ -12,3 +12,4 @@ app/release/
 /release/
 /keystore.properties
 /signing/
+/gradle-*.log
