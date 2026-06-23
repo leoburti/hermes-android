@@ -48,11 +48,19 @@ class MainViewModel(
         }
     }
 
-    fun onPageFinished(url: String?, rememberLastUrl: Boolean = true) {
-        val next = url ?: _uiState.value.currentUrl
+    fun onUrlVisited(url: String?, rememberLastUrl: Boolean = true) {
+        val next = url?.takeIf { it.isNotBlank() } ?: return
         if (!currentLoadHasMainFrameError && rememberLastUrl) {
             settingsRepository.saveLastLoadedUrl(next)
         }
+        _uiState.update {
+            if (it.currentUrl == next) it else it.copy(currentUrl = next)
+        }
+    }
+
+    fun onPageFinished(url: String?, rememberLastUrl: Boolean = true) {
+        val next = url ?: _uiState.value.currentUrl
+        onUrlVisited(next, rememberLastUrl)
         _uiState.update { it.copy(isLoading = false, currentUrl = next) }
     }
 

@@ -38,12 +38,12 @@ To get added, **message [@Paladin173](https://github.com/Paladin173) your Gmail 
 
 Once added, the app will appear in the Play Store for you to install and receive automatic updates.
 
-Current pre-release version: `v0.1.5`.
+Current pre-release version: `v0.1.6`.
 
 Current Android build metadata:
 
-- Version name: `0.1.5`
-- Version code: `6`
+- Version name: `0.1.6`
+- Version code: `7`
 - Application ID: `com.hermeswebui.android`
 - Compile/target SDK: `37`
 
@@ -97,6 +97,7 @@ Requirements:
 - WebUI-owned navigation for the Official Hermes Dashboard setting
 - Explicitly configured Official Hermes Dashboard links open in a Chrome Custom Tab with minimal browser UI
 - Deep link support: `hermes://session/{id}` navigates to Hermes sessions
+- Cold-start restore keeps the active Hermes session/workspace route when the app process is restarted, with a WebUI-origin-scoped workspace-button recovery fallback that reloads the last known in-app session route if the panel is tapped from a blank root state
 - Server health probing on WebView errors to distinguish server-down from content errors
 - First-run settings flow for the Hermes WebUI URL; the dashboard URL is managed only by WebUI Settings > System
 - Back handling, pull-to-refresh, loading, offline, and error states
@@ -163,11 +164,11 @@ keyAlias=upload
 keyPassword=replace-me
 ```
 
-With that file present, release builds automatically sign the APK and AAB.
+With that file present, release APK builds automatically sign the output.
 
 ```powershell
 Copy-Item .\keystore.properties.example .\keystore.properties
-.\gradlew.bat :app:stageReleaseArtifacts --no-daemon
+.\gradlew.bat :app:stageGithubReleaseApk --no-daemon
 ```
 
 If signing values are missing, `release` tasks fail fast with a clear message
@@ -190,10 +191,10 @@ To create the Base64 keystore value on Windows PowerShell:
 
 The workflow in `.github/workflows/release.yml` can then:
 
-- build and sign release APK/AAB artifacts
+- build and sign one GitHub release APK
 - upload them as workflow artifacts on manual runs
-- attach them to a GitHub Release automatically when you push a `v*` tag
-- upload the AAB to the Google Play internal track when `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON_BASE64` is configured
+- attach the APK to a GitHub Release automatically when you push a `v*` tag
+- fail a tag release when the tag, such as `v0.1.6`, does not match the Android `versionName`
 
 Google Play listing assets:
 
@@ -205,14 +206,17 @@ Google Play listing assets:
 Release artifact naming:
 
 ```powershell
-.\gradlew.bat :app:stageReleaseArtifacts --no-daemon
+.\gradlew.bat :app:stageGithubReleaseApk --no-daemon
 ```
 
-When signing is configured, this stages signed distribution files under
-Gradle's ignored build output directory with the product name and version:
+When signing is configured, this stages the signed GitHub distribution APK under
+Gradle's ignored build output directory with the product name, version, and
+release channel:
 
-- `build/release/hermes-webui-v<version>.apk` - GitHub/device APK artifact
-- `build/release/hermes-webui-v<version>.aab` - Google Play app bundle artifact
+- `build/release/hermes-webui-v<version>-github.apk` - GitHub/device APK artifact
+
+Before each GitHub release, increment both `appVersionName` and `versionCode` in
+`app/build.gradle.kts`, then push the matching tag, for example `v0.1.6`.
 
 ---
 
