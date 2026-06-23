@@ -146,7 +146,7 @@ workflow changes should be made in Hermes WebUI instead.
 | BUG-009 | 2026-06-22 | WebView | Fixed Issue 7 by removing Android's `/api/dashboard/config` write path and blanking the bundled dashboard default so opening WebUI from Android no longer changes WebUI's Official Hermes Dashboard setting from Auto-detect to Always show |
 | REL-007 | 2026-06-22 | Release | Updated Android app version to `0.1.5` with `versionCode` 6; created debug build variant that displays app name as "Hermes DEBUG" to distinguish test builds from official releases; deployed to emulator for testing |
 | BUG-010 | 2026-06-22 | Data migration | Fixed Issue 7 persistence: Added app startup migration that clears old dashboard URL from SharedPreferences on upgrade so users updating from pre-0.1.5 versions don't retain the stored dashboard URL that was previously being written to WebUI `/api/dashboard/config`; migration includes versioning for future data schema updates |
-| BUG-011 | 2026-06-22 | Android compatibility | Fixed WebUI update-notification generated summaries rendering as a clipped/non-scrollable sliver in Android WebView by keeping the viewport shim's horizontal overflow guard while restoring vertical page scrolling instead of forcing `body { overflow: hidden }` |
+| BUG-011 | 2026-06-22 | Android compatibility | Fixed WebUI update-notification generated summaries rendering as a clipped/non-scrollable sliver in Android WebView by restoring vertical page scrolling and re-capping the update summary panel's `max-height: min(34vh, 260px)` with the measured viewport height because Android WebView was collapsing that `vh` max-height to `0px` |
 | REL-008 | 2026-06-22 | Release | Prepared the next Android release as `0.1.8` with `versionCode` 9 |
 
 ---

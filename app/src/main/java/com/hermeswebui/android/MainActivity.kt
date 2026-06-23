@@ -122,11 +122,12 @@ private val HermesWebViewViewportFixScript = """
 
         var px = Math.round(height) + 'px';
         // Hermes WebUI floating menus cap their height with `max-height: calc(100vh - 16px)`
-        // and scroll the overflow. Android System WebView evaluates CSS `100vh` as 0 here
-        // (same viewport-unit quirk as `100dvh`), so that max-height collapses to 0 and the
-        // menu renders as a ~2px sliver with its items scrolled out of view. Re-cap the menus
-        // with the measured viewport height so they size to their content again.
+        // and the generated update-summary panel uses `max-height: min(34vh, 260px)`.
+        // Android System WebView evaluates these viewport units as 0 here (same quirk it can
+        // apply to `100dvh`), so those panels collapse to a tiny sliver with the content
+        // scrolled out of view. Re-cap them with the measured viewport height instead.
         var menuMax = Math.max(120, Math.round(height) - 16) + 'px';
+        var updateSummaryMax = Math.max(120, Math.min(260, Math.round(height * 0.34))) + 'px';
         var style = document.getElementById(styleId);
         if (!style) {
           style = document.createElement('style');
@@ -140,7 +141,8 @@ private val HermesWebViewViewportFixScript = """
           'html, body { height: ' + px + ' !important; min-height: ' + px + ' !important; }',
           'body { overflow-x: hidden !important; }',
           '.layout, .rail, .sidebar, .main, .rightpanel, #sessionList, .messages { min-height: 0 !important; }',
-          '.session-action-menu, .workspace-prefs-menu { max-height: ' + menuMax + ' !important; }'
+          '.session-action-menu, .workspace-prefs-menu { max-height: ' + menuMax + ' !important; }',
+          '#updateSummaryPanel { max-height: ' + updateSummaryMax + ' !important; overflow-y: auto !important; }'
         ].join('\n');
       };
 
