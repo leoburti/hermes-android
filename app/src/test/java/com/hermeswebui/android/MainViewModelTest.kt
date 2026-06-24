@@ -214,11 +214,26 @@ class MainViewModelTest {
         assertThat(viewModel.uiState.value.isOffline).isTrue()
         assertThat(viewModel.uiState.value.isReconnecting).isTrue()
 
-        // Advance past second 2 s interval — probe succeeds, auto-reload event fires
-        advanceTimeBy(2_001L)
+        // Advance past second fixed interval — probe succeeds, auto-reload event fires
+        advanceTimeBy(1_001L)
         runCurrent()
         assertThat(autoReloads).hasSize(1)
         assertThat(viewModel.uiState.value.isReconnecting).isFalse()
+    }
+
+    @Test
+    fun `setReconnectPollIntervalSeconds updates ui state and clamps values`() {
+        val store = FakeSettingsStore()
+        val viewModel = MainViewModel(store, null, defaultServerUrl, defaultDashboardUrl)
+
+        viewModel.setReconnectPollIntervalSeconds(7)
+        assertThat(viewModel.uiState.value.reconnectPollIntervalSeconds).isEqualTo(7)
+
+        viewModel.setReconnectPollIntervalSeconds(0)
+        assertThat(viewModel.uiState.value.reconnectPollIntervalSeconds).isEqualTo(1)
+
+        viewModel.setReconnectPollIntervalSeconds(20)
+        assertThat(viewModel.uiState.value.reconnectPollIntervalSeconds).isEqualTo(10)
     }
 
     @Test

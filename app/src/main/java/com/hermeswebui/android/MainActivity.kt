@@ -69,6 +69,7 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
+import androidx.core.content.FileProvider
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.ViewModelProvider
 import androidx.webkit.JavaScriptReplyProxy
@@ -77,10 +78,13 @@ import androidx.webkit.WebMessageCompat
 import androidx.webkit.WebSettingsCompat
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
+import com.hermeswebui.android.background.HermesDebugLoggingService
 import com.hermeswebui.android.background.HermesReconnectService
+import com.hermeswebui.android.background.ReconnectBackgroundPolicy
 import com.hermeswebui.android.core.security.NavigationDecision
 import com.hermeswebui.android.core.security.UrlOrigins
 import com.hermeswebui.android.core.security.UrlPolicy
+import com.hermeswebui.android.data.HermesApiClient
 import com.hermeswebui.android.data.SettingsRepository
 import com.hermeswebui.android.domain.ServerUrlValidator
 import com.hermeswebui.android.domain.ShareIntentParser
@@ -90,12 +94,15 @@ import com.hermeswebui.android.ui.settings.SettingsScreen
 import com.hermeswebui.android.ui.web.WebShell
 import kotlinx.coroutines.launch
 import org.json.JSONObject
+import java.io.File
 
 private const val HermesNotificationBridgeName = "HermesAndroidNotifications"
 private const val HermesNotificationChannelId = "hermes_webui_notifications"
 private const val HermesNotificationIdBase = 10_000
 private const val ActionOpenNotificationUrl = "com.hermeswebui.android.OPEN_NOTIFICATION_URL"
 private const val ExtraNotificationUrl = "com.hermeswebui.android.extra.NOTIFICATION_URL"
+private const val HermesGithubIssuesListUrl = "https://github.com/hermes-webui/hermes-android/issues"
+private const val HermesGithubNewIssueUrl = "https://github.com/hermes-webui/hermes-android/issues/new/choose"
 
 private data class NotificationPermissionReply(
     val id: String?,
@@ -512,6 +519,7 @@ class MainActivity : ComponentActivity() {
     private var appSettingsEntryScriptHandler: ScriptHandler? = null
     private var activityVisible = false
     private var reconnectServiceRunning = false
+    private var debugLoggingServiceRunning = false
 
     private var activeOAuthPopup: WebView? = null
     private var oauthFlowTimeoutMs: Long = 0
@@ -589,6 +597,7 @@ class MainActivity : ComponentActivity() {
         lifecycleScope.launch {
             viewModel.uiState.collect { state ->
                 syncReconnectForegroundService(state.isReconnecting)
+                syncDebugLoggingForegroundService(state.debugLoggingEnabled)
             }
         }
 
@@ -627,6 +636,7 @@ class MainActivity : ComponentActivity() {
         super.onResume()
         if (::webView.isInitialized) {
             activityVisible = true
+            viewModel.refreshFeatureFlagsFromRepository()
             stopReconnectForegroundService()
             viewModel.onAppForegrounded()
             updateWebNotificationPermissionState()
@@ -646,8 +656,15 @@ class MainActivity : ComponentActivity() {
     override fun onStop() {
         super.onStop()
         activityVisible = false
-        syncReconnectForegroundService(viewModel.uiState.value.isReconnecting)
-        if (!viewModel.uiState.value.isReconnecting) {
+        val state = viewModel.uiState.value
+        syncReconnectForegroundService(state.isReconnecting)
+        if (
+            ReconnectBackgroundPolicy.shouldCancelAutoRetryOnStop(
+                backgroundReconnectEnabled = state.backgroundReconnectEnabled,
+                activityVisible = activityVisible,
+                isReconnecting = state.isReconnecting
+            )
+        ) {
             // Avoid background polling unless the reconnect foreground service is actively holding
             // the bounded retry loop alive for a just-backgrounded recovery attempt.
             viewModel.cancelAutoRetry()
@@ -766,14 +783,38 @@ class MainActivity : ComponentActivity() {
                     initialServerUrl = uiState.settings.serverUrl,
                     isConfigured = uiState.settings.isConfigured,
                     backgroundReconnectEnabled = uiState.backgroundReconnectEnabled,
+                    reconnectPollIntervalSeconds = uiState.reconnectPollIntervalSeconds,
+                    sseTransportEnabled = uiState.sseTransportEnabled,
+                    sseSupportStatus = uiState.sseSupportStatus,
+                    debugLoggingEnabled = uiState.debugLoggingEnabled,
                     serverProfiles = serverProfiles,
                     onSave = onSaveSettings,
                     onResetSession = onResetSession,
                     onDismiss = { viewModel.closeSettings() },
                     onSetBackgroundReconnect = { enabled ->
+                        if (enabled) {
+                            requestNotificationPermissionIfNeeded()
+                        }
                         viewModel.setBackgroundReconnectEnabled(enabled)
                         syncReconnectForegroundService(viewModel.uiState.value.isReconnecting)
                     },
+                    onSetReconnectPollIntervalSeconds = { seconds ->
+                        viewModel.setReconnectPollIntervalSeconds(seconds)
+                    },
+                    onSetSseTransportEnabled = { enabled ->
+                        setSseTransportEnabledWithCheck(enabled)
+                    },
+                    onSetDebugLoggingEnabled = { enabled ->
+                        if (enabled) {
+                            requestNotificationPermissionIfNeeded()
+                        }
+                        viewModel.setDebugLoggingEnabled(enabled)
+                        syncDebugLoggingForegroundService(enabled)
+                    },
+                    onShareDebugLog = { shareLatestDebugLog() },
+                    onDownloadDebugLog = { downloadLatestDebugLog() },
+                    onViewGithubIssues = { openInExternalBrowser(HermesGithubIssuesListUrl) },
+                    onNewGithubIssue = { openInExternalBrowser(HermesGithubNewIssueUrl) },
                     onAddProfile = { name, url -> handleAddServerProfile(name, url) },
                     onDeleteProfile = { profileId -> handleDeleteServerProfile(profileId) },
                     onRenameProfile = { profileId, newName -> viewModel.renameServerProfile(profileId, newName) },
@@ -903,6 +944,7 @@ class MainActivity : ComponentActivity() {
                     }
                     this@MainActivity.filePathCallback?.onReceiveValue(null)
                     this@MainActivity.filePathCallback = filePathCallback
+                    Toast.makeText(this@MainActivity, "Choose file(s) to upload", Toast.LENGTH_SHORT).show()
                     filePickerLauncher.launch(arrayOf("*/*"))
                     return true
                 }
@@ -1092,6 +1134,90 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private fun requestNotificationPermissionIfNeeded() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
+        val hasPermission = ContextCompat.checkSelfPermission(
+            this,
+            Manifest.permission.POST_NOTIFICATIONS
+        ) == PackageManager.PERMISSION_GRANTED
+        if (hasPermission) return
+        settingsRepository.markNotificationPermissionRequested()
+        if (!notificationPermissionRequestInFlight) {
+            notificationPermissionRequestInFlight = true
+            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
+
+    private fun setSseTransportEnabledWithCheck(enabled: Boolean) {
+        if (!enabled) {
+            viewModel.setSseTransportEnabled(false)
+            viewModel.setSseSupportStatus("SSE transport disabled.")
+            return
+        }
+
+        val serverUrl = viewModel.uiState.value.settings.serverUrl
+        if (serverUrl.isBlank()) {
+            viewModel.setSseTransportEnabled(false)
+            viewModel.setSseSupportStatus("Configure a server URL before enabling SSE.")
+            Toast.makeText(this, "Configure a server URL before enabling SSE", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        viewModel.setSseSupportStatus("Checking server SSE support…")
+        lifecycleScope.launch {
+            when (HermesApiClient.detectSseCapability(serverUrl)) {
+                HermesApiClient.SseCapability.SESSION_SSE_ENABLED -> {
+                    viewModel.setSseTransportEnabled(true)
+                    viewModel.setSseSupportStatus(
+                        "✅  Session SSE is enabled on the server (HERMES_WEBUI_SESSION_SSE_ENABLED=1). " +
+                        "Using SSE transport."
+                    )
+                    Toast.makeText(this@MainActivity, "SSE enabled.", Toast.LENGTH_SHORT).show()
+                }
+                HermesApiClient.SseCapability.GATEWAY_STREAM_AVAILABLE -> {
+                    viewModel.setSseTransportEnabled(true)
+                    viewModel.setSseSupportStatus(
+                        "⚡  Gateway stream endpoint detected (/api/sessions/gateway/stream). " +
+                        "Session SSE feature flag is off on this server — set " +
+                        "HERMES_WEBUI_SESSION_SSE_ENABLED=1 to enable full session SSE. " +
+                        "Using gateway stream in the meantime."
+                    )
+                    Toast.makeText(
+                        this@MainActivity,
+                        "Gateway stream available. Session SSE flag not set — see settings for details.",
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
+                HermesApiClient.SseCapability.FEATURE_DISABLED -> {
+                    viewModel.setSseTransportEnabled(false)
+                    viewModel.setSseSupportStatus(
+                        "🚫  Session SSE is off on this server (HTTP 404 — route not registered). " +
+                        "The feature is opt-in: set HERMES_WEBUI_SESSION_SSE_ENABLED=1 in the " +
+                        "server/container environment and restart. " +
+                        "Tap the copy button below to get a ready-made prompt you can paste into Hermes."
+                    )
+                    Toast.makeText(
+                        this@MainActivity,
+                        "Session SSE not enabled on this server — see settings for how to turn it on.",
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
+                HermesApiClient.SseCapability.NONE -> {
+                    viewModel.setSseTransportEnabled(false)
+                    viewModel.setSseSupportStatus(
+                        "❌  Could not reach SSE endpoint (network error or unexpected response). " +
+                        "Make sure the server is reachable and try again."
+                    )
+                    Toast.makeText(
+                        this@MainActivity,
+                        "SSE check failed — server unreachable or unexpected error.",
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
+            }
+        }
+    }
+
     private fun postNotificationBridgeReply(
         replyProxy: JavaScriptReplyProxy,
         id: String?,
@@ -1158,14 +1284,23 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun syncReconnectForegroundService(isReconnecting: Boolean) {
-        if (!viewModel.uiState.value.backgroundReconnectEnabled || activityVisible || !isReconnecting) {
+        if (
+            !ReconnectBackgroundPolicy.shouldKeepAlive(
+                backgroundReconnectEnabled = viewModel.uiState.value.backgroundReconnectEnabled,
+                activityVisible = activityVisible,
+                isReconnecting = isReconnecting
+            )
+        ) {
             stopReconnectForegroundService()
             return
         }
         if (reconnectServiceRunning) return
 
         try {
-            HermesReconnectService.start(this, viewModel.uiState.value.settings.serverUrl)
+            HermesReconnectService.start(
+                this,
+                viewModel.uiState.value.reconnectPollIntervalSeconds
+            )
             reconnectServiceRunning = true
         } catch (_: IllegalStateException) {
             reconnectServiceRunning = false
@@ -1176,10 +1311,108 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+
     private fun stopReconnectForegroundService() {
         if (!reconnectServiceRunning) return
         HermesReconnectService.stop(this)
         reconnectServiceRunning = false
+    }
+
+    private fun syncDebugLoggingForegroundService(debugLoggingEnabled: Boolean) {
+        val persistedEnabled = settingsRepository.isDebugLoggingEnabled()
+        if (!debugLoggingEnabled || !persistedEnabled) {
+            if (debugLoggingEnabled && !persistedEnabled) {
+                viewModel.setDebugLoggingEnabled(false)
+            }
+            stopDebugLoggingForegroundService()
+            return
+        }
+        if (debugLoggingServiceRunning) return
+
+        try {
+            HermesDebugLoggingService.start(this)
+            debugLoggingServiceRunning = true
+        } catch (_: IllegalStateException) {
+            debugLoggingServiceRunning = false
+            viewModel.setDebugLoggingEnabled(false)
+        } catch (_: SecurityException) {
+            debugLoggingServiceRunning = false
+            viewModel.setDebugLoggingEnabled(false)
+        }
+    }
+
+    private fun stopDebugLoggingForegroundService() {
+        if (!debugLoggingServiceRunning) return
+        HermesDebugLoggingService.stop(this)
+        debugLoggingServiceRunning = false
+    }
+
+    private fun latestDebugLogFile(): File? {
+        val logDir = File(filesDir, "debug-logs")
+        return logDir
+            .listFiles()
+            ?.filter { it.isFile && it.extension.equals("log", ignoreCase = true) }
+            ?.maxByOrNull { it.lastModified() }
+    }
+
+    private fun shareLatestDebugLog() {
+        val source = latestDebugLogFile()
+        if (source == null) {
+            Toast.makeText(this, "No debug log found yet", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val uri = runCatching {
+            FileProvider.getUriForFile(this, "$packageName.fileprovider", source)
+        }.getOrNull()
+        if (uri == null) {
+            Toast.makeText(this, "Unable to share debug log", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val shareIntent = Intent(Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            putExtra(Intent.EXTRA_SUBJECT, "Hermes Android debug log")
+            putExtra(Intent.EXTRA_TEXT, "Attach this log to your GitHub issue or PR.")
+            putExtra(Intent.EXTRA_STREAM, uri)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        val chooser = Intent.createChooser(shareIntent, "Share debug log")
+        try {
+            startActivity(chooser)
+        } catch (_: ActivityNotFoundException) {
+            Toast.makeText(this, "No app found to share debug logs", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun downloadLatestDebugLog() {
+        val source = latestDebugLogFile()
+        if (source == null) {
+            Toast.makeText(this, "No debug log found yet", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val exportDir = File(getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), "HermesLogs")
+        if (!exportDir.exists() && !exportDir.mkdirs()) {
+            Toast.makeText(this, "Unable to prepare download folder", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val target = File(exportDir, source.name)
+        val copied = runCatching {
+            source.copyTo(target, overwrite = true)
+            target
+        }.getOrNull()
+        if (copied == null) {
+            Toast.makeText(this, "Failed to save debug log", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        Toast.makeText(
+            this,
+            "Saved log to Android/data/$packageName/files/Download/HermesLogs",
+            Toast.LENGTH_LONG
+        ).show()
     }
 
     @SuppressLint("MissingPermission")
@@ -1844,6 +2077,8 @@ class MainActivity : ComponentActivity() {
 
         // Switch the profile and reload
         viewModel.switchServerProfile(profileId)
+        urlPolicy = UrlPolicy(viewModel.uiState.value.settings.allowedHosts)
+        installHermesWebUiDocumentStartFixes(webView, newProfile.url)
         webView.loadUrl(newProfile.url)
         viewModel.closeSettings()
         Toast.makeText(this, "Switched to ${newProfile.name}", Toast.LENGTH_SHORT).show()

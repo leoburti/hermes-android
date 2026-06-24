@@ -1,0 +1,157 @@
+package com.hermeswebui.android.background
+
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
+import android.app.Service
+import android.content.Context
+import android.content.Intent
+import android.content.pm.ServiceInfo
+import android.os.Build
+import android.os.IBinder
+import androidx.core.app.NotificationCompat
+import androidx.core.content.ContextCompat
+import com.hermeswebui.android.MainActivity
+import com.hermeswebui.android.R
+import com.hermeswebui.android.data.SettingsRepository
+import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+
+class HermesDebugLoggingService : Service() {
+    private var logcatProcess: Process? = null
+
+    override fun onBind(intent: Intent?): IBinder? = null
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (intent?.action == ACTION_STOP_LOGGING) {
+            // Persist the stop action so settings reflect notification action immediately.
+            SettingsRepository(applicationContext).setDebugLoggingEnabled(false)
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            stopSelf()
+            return START_NOT_STICKY
+        }
+
+        ensureDebugChannel()
+        val notification = buildNotification()
+        startLogCaptureIfNeeded()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            startForeground(
+                DEBUG_LOGGING_NOTIFICATION_ID,
+                notification,
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+            )
+        } else {
+            startForeground(DEBUG_LOGGING_NOTIFICATION_ID, notification)
+        }
+        return START_NOT_STICKY
+    }
+
+    override fun onDestroy() {
+        stopLogCapture()
+        stopForeground(STOP_FOREGROUND_REMOVE)
+        super.onDestroy()
+    }
+
+    private fun startLogCaptureIfNeeded() {
+        if (logcatProcess != null) return
+
+        val logDir = File(filesDir, "debug-logs").apply { mkdirs() }
+        val timestamp = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(Date())
+        val outFile = File(logDir, "hermes-debug-$timestamp.log")
+
+        val process = runCatching {
+            val pid = android.os.Process.myPid().toString()
+            ProcessBuilder(
+                "logcat",
+                "--pid=$pid",
+                "-v",
+                "time"
+            )
+                .redirectOutput(outFile)
+                .redirectErrorStream(true)
+                .start()
+        }.getOrElse {
+            runCatching {
+                ProcessBuilder("logcat", "-v", "time")
+                    .redirectOutput(outFile)
+                    .redirectErrorStream(true)
+                    .start()
+            }.getOrNull()
+        }
+
+        logcatProcess = process
+    }
+
+    private fun stopLogCapture() {
+        runCatching { logcatProcess?.destroy() }
+        logcatProcess = null
+    }
+
+    private fun ensureDebugChannel() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+        val manager = getSystemService(NotificationManager::class.java) ?: return
+        val channel = NotificationChannel(
+            DEBUG_LOGGING_CHANNEL_ID,
+            getString(R.string.debug_logging_channel_name),
+            NotificationManager.IMPORTANCE_LOW
+        ).apply {
+            description = getString(R.string.debug_logging_channel_description)
+        }
+        manager.createNotificationChannel(channel)
+    }
+
+    private fun buildNotification(): Notification {
+        val launchIntent = Intent(this, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+        }
+        val openAppIntent = PendingIntent.getActivity(
+            this,
+            DEBUG_LOGGING_NOTIFICATION_ID,
+            launchIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val stopIntent = Intent(this, HermesDebugLoggingService::class.java).apply {
+            action = ACTION_STOP_LOGGING
+        }
+        val stopPendingIntent = PendingIntent.getService(
+            this,
+            DEBUG_LOGGING_NOTIFICATION_ID + 1,
+            stopIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        return NotificationCompat.Builder(this, DEBUG_LOGGING_CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_notification)
+            .setContentTitle(getString(R.string.debug_logging_notification_title))
+            .setContentText(getString(R.string.debug_logging_notification_body))
+            .setStyle(NotificationCompat.BigTextStyle().bigText(getString(R.string.debug_logging_notification_body)))
+            .setContentIntent(openAppIntent)
+            .setOnlyAlertOnce(true)
+            .setOngoing(true)
+            .setAutoCancel(false)
+            .setCategory(NotificationCompat.CATEGORY_SERVICE)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .addAction(0, getString(R.string.debug_logging_notification_stop_action), stopPendingIntent)
+            .build()
+    }
+
+    companion object {
+        private const val ACTION_STOP_LOGGING = "com.hermeswebui.android.action.STOP_DEBUG_LOGGING"
+        private const val DEBUG_LOGGING_CHANNEL_ID = "hermes_debug_logging"
+        private const val DEBUG_LOGGING_NOTIFICATION_ID = 20_011
+
+        fun start(context: Context) {
+            val intent = Intent(context, HermesDebugLoggingService::class.java)
+            ContextCompat.startForegroundService(context, intent)
+        }
+
+        fun stop(context: Context) {
+            context.stopService(Intent(context, HermesDebugLoggingService::class.java))
+        }
+    }
+}
+
+

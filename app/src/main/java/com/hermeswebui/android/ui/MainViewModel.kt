@@ -37,7 +37,10 @@ class MainViewModel(
 
     private val _uiState = MutableStateFlow(MainUiState(
         settings = settings,
-        backgroundReconnectEnabled = settingsRepositoryImpl?.isBackgroundReconnectEnabled() ?: false
+        backgroundReconnectEnabled = settingsRepositoryImpl?.isBackgroundReconnectEnabled() ?: false,
+        reconnectPollIntervalSeconds = settingsRepositoryImpl?.getReconnectPollIntervalSeconds() ?: 1,
+        sseTransportEnabled = settingsRepositoryImpl?.isSseTransportEnabled() ?: false,
+        debugLoggingEnabled = settingsRepositoryImpl?.isDebugLoggingEnabled() ?: false
     ))
     val uiState: StateFlow<MainUiState> = _uiState.asStateFlow()
 
@@ -142,8 +145,8 @@ class MainViewModel(
 
     /** Starts the bounded auto-retry polling loop.
      *
-     * Polls [serverReachabilityChecker] with exponential backoff starting at 1 s,
-     * capped at 10 s per interval, for up to 60 s total. On the first successful
+     * Polls [serverReachabilityChecker] at a user-configurable fixed interval
+     * (`reconnectPollIntervalSeconds`) for up to 60 s total. On the first successful
      * probe it emits [autoReloadEvent] so the UI can trigger a WebView reload.
      * Sets [MainUiState.isReconnecting] while the loop is active.
      */
@@ -154,11 +157,10 @@ class MainViewModel(
         val deferredErrorSnapshot = deferredPageError
 
         autoRetryJob = viewModelScope.launch {
-            var intervalMs = 1_000L
-            val maxIntervalMs = 10_000L
             var elapsedRetryMs = 0L
             val maxRetryDurationMs = 60_000L
-            var msUntilNextProbe = intervalMs
+            val pollIntervalMs = (_uiState.value.reconnectPollIntervalSeconds.coerceAtLeast(1) * 1_000L)
+            var msUntilNextProbe = pollIntervalMs
             _uiState.update { it.copy(isReconnecting = true) }
             promoteDeferredErrorIfReady(deferredErrorSnapshot)
 
@@ -193,8 +195,7 @@ class MainViewModel(
 
                 // Server still unreachable — confirm offline state and back off.
                 _uiState.update { it.copy(isOffline = true) }
-                intervalMs = (intervalMs * 2).coerceAtMost(maxIntervalMs)
-                msUntilNextProbe = intervalMs
+                msUntilNextProbe = pollIntervalMs
             }
 
             // Timed out after ~60 s: give up, leave error screen, stop spinning.
@@ -304,10 +305,14 @@ class MainViewModel(
          val repo = settingsRepositoryImpl ?: return
          val profile = repo.getProfiles().firstOrNull { it.id == profileId } ?: return
          repo.setActiveProfile(profileId)
+         val dashboardUrl = _uiState.value.settings.dashboardUrl
+         settingsRepository.saveAppUrls(profile.url, dashboardUrl)
+         val refreshed = settingsRepository.getSettings(defaultUrl, defaultDashboardUrl)
          refreshProfiles()
          // Trigger a reload with the new server URL
          _uiState.update {
              it.copy(
+                 settings = refreshed,
                  currentUrl = profile.url,
                  isLoading = true,
                  hasLoadedContent = false,
@@ -334,6 +339,43 @@ class MainViewModel(
     fun setBackgroundReconnectEnabled(enabled: Boolean) {
         settingsRepositoryImpl?.setBackgroundReconnectEnabled(enabled)
         _uiState.update { it.copy(backgroundReconnectEnabled = enabled) }
+    }
+
+    fun setReconnectPollIntervalSeconds(seconds: Int) {
+        val clamped = seconds.coerceIn(1, 10)
+        settingsRepositoryImpl?.setReconnectPollIntervalSeconds(clamped)
+        _uiState.update { it.copy(reconnectPollIntervalSeconds = clamped) }
+    }
+
+    fun setDebugLoggingEnabled(enabled: Boolean) {
+        settingsRepositoryImpl?.setDebugLoggingEnabled(enabled)
+        _uiState.update { it.copy(debugLoggingEnabled = enabled) }
+    }
+
+    fun setSseTransportEnabled(enabled: Boolean) {
+        settingsRepositoryImpl?.setSseTransportEnabled(enabled)
+        _uiState.update {
+            it.copy(
+                sseTransportEnabled = enabled,
+                sseSupportStatus = if (enabled) it.sseSupportStatus else null
+            )
+        }
+    }
+
+    fun setSseSupportStatus(status: String?) {
+        _uiState.update { it.copy(sseSupportStatus = status) }
+    }
+
+    fun refreshFeatureFlagsFromRepository() {
+        val repo = settingsRepositoryImpl ?: return
+        _uiState.update {
+            it.copy(
+                backgroundReconnectEnabled = repo.isBackgroundReconnectEnabled(),
+                reconnectPollIntervalSeconds = repo.getReconnectPollIntervalSeconds(),
+                sseTransportEnabled = repo.isSseTransportEnabled(),
+                debugLoggingEnabled = repo.isDebugLoggingEnabled()
+            )
+        }
     }
 
     fun saveAppUrls(serverUrl: String, dashboardUrl: String) {

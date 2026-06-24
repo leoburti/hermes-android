@@ -12,5 +12,9 @@ data class MainUiState(
     val isSettingsVisible: Boolean = false,
     val pendingShareBanner: String? = null,
     val currentUrl: String = settings.serverUrl,
-    val backgroundReconnectEnabled: Boolean = false
+    val backgroundReconnectEnabled: Boolean = false,
+    val reconnectPollIntervalSeconds: Int = 1,
+    val sseTransportEnabled: Boolean = false,
+    val sseSupportStatus: String? = null,
+    val debugLoggingEnabled: Boolean = false
 )

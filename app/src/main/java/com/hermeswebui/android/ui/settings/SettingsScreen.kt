@@ -31,8 +31,10 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.SuggestionChip
@@ -50,10 +52,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.hermeswebui.android.data.HermesApiClient
 import com.hermeswebui.android.data.ServerProfile
+import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
@@ -61,11 +68,22 @@ fun SettingsScreen(
     initialServerUrl: String,
     isConfigured: Boolean,
     backgroundReconnectEnabled: Boolean,
+    reconnectPollIntervalSeconds: Int,
+    sseTransportEnabled: Boolean,
+    sseSupportStatus: String?,
+    debugLoggingEnabled: Boolean,
     serverProfiles: List<ServerProfile>,
     onSave: (String) -> Unit,
     onResetSession: () -> Unit,
     onDismiss: () -> Unit,
     onSetBackgroundReconnect: (Boolean) -> Unit,
+    onSetReconnectPollIntervalSeconds: (Int) -> Unit,
+    onSetSseTransportEnabled: (Boolean) -> Unit,
+    onSetDebugLoggingEnabled: (Boolean) -> Unit,
+    onShareDebugLog: () -> Unit,
+    onDownloadDebugLog: () -> Unit,
+    onViewGithubIssues: () -> Unit,
+    onNewGithubIssue: () -> Unit,
     onAddProfile: (String, String) -> Unit,
     onDeleteProfile: (String) -> Unit,
     onRenameProfile: (String, String) -> Unit,
@@ -345,38 +363,184 @@ fun SettingsScreen(
                         .background(surfaceColor)
                         .fillMaxWidth()
                 ) {
-                    ListItem(
-                        headlineContent = {
+                    Column {
+                        ListItem(
+                            headlineContent = {
+                                Text(
+                                    "Background reconnect notification",
+                                    color = onSurface,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            },
+                            supportingContent = {
+                                Text(
+                                    "Show a notification while reconnecting after an app switch",
+                                    color = onSurfaceVar,
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                            },
+                            trailingContent = {
+                                Switch(
+                                    checked = backgroundReconnectEnabled,
+                                    onCheckedChange = onSetBackgroundReconnect,
+                                    colors = SwitchDefaults.colors(
+                                        checkedThumbColor = MaterialTheme.colorScheme.onPrimary,
+                                        checkedTrackColor = primaryColor,
+                                        uncheckedThumbColor = onSurfaceVar,
+                                        uncheckedTrackColor = surfaceVariant
+                                    )
+                                )
+                            },
+                            colors = ListItemDefaults.colors(containerColor = surfaceColor),
+                            modifier = Modifier.clickable {
+                                onSetBackgroundReconnect(!backgroundReconnectEnabled)
+                            }
+                        )
+
+                        HorizontalDivider(color = outlineVar.copy(alpha = 0.5f))
+
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 14.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
                             Text(
-                                "Background reconnect notification",
+                                text = "Reconnect polling interval",
                                 color = onSurface,
-                                fontWeight = FontWeight.Medium
+                                fontWeight = FontWeight.Medium,
+                                style = MaterialTheme.typography.bodyMedium
                             )
-                        },
-                        supportingContent = {
                             Text(
-                                "Show a notification while reconnecting after an app switch",
+                                text = "$reconnectPollIntervalSeconds seconds between reconnect checks",
                                 color = onSurfaceVar,
                                 style = MaterialTheme.typography.bodySmall
                             )
-                        },
-                        trailingContent = {
-                            Switch(
-                                checked = backgroundReconnectEnabled,
-                                onCheckedChange = onSetBackgroundReconnect,
-                                colors = SwitchDefaults.colors(
-                                    checkedThumbColor = MaterialTheme.colorScheme.onPrimary,
-                                    checkedTrackColor = primaryColor,
-                                    uncheckedThumbColor = onSurfaceVar,
-                                    uncheckedTrackColor = surfaceVariant
+                            Slider(
+                                value = reconnectPollIntervalSeconds.toFloat(),
+                                onValueChange = { value ->
+                                    onSetReconnectPollIntervalSeconds(value.roundToInt())
+                                },
+                                valueRange = 1f..10f,
+                                steps = 8,
+                                colors = androidx.compose.material3.SliderDefaults.colors(
+                                    thumbColor = primaryColor,
+                                    activeTrackColor = primaryColor,
+                                    inactiveTrackColor = surfaceVariant
                                 )
                             )
-                        },
-                        colors = ListItemDefaults.colors(containerColor = surfaceColor),
-                        modifier = Modifier.clickable {
-                            onSetBackgroundReconnect(!backgroundReconnectEnabled)
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.End
+                            ) {
+                                TextButton(onClick = { onSetReconnectPollIntervalSeconds(1) }) {
+                                    Text("Reset to 1s")
+                                }
+                            }
+                            Text(
+                                text = "Used for fallback polling while Hermes is reconnecting.",
+                                color = onSurfaceVar.copy(alpha = 0.75f),
+                                style = MaterialTheme.typography.labelSmall
+                            )
+                            Text(
+                                text = "Recommended: 1-3 seconds for quick recovery.",
+                                color = onSurfaceVar.copy(alpha = 0.72f),
+                                style = MaterialTheme.typography.labelSmall
+                            )
+                            if (reconnectPollIntervalSeconds >= 6) {
+                                Text(
+                                    text = "Higher intervals reduce checks but may delay reconnect updates.",
+                                    color = MaterialTheme.colorScheme.error.copy(alpha = 0.85f),
+                                    style = MaterialTheme.typography.labelSmall
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(4.dp))
+                            HorizontalDivider(color = outlineVar.copy(alpha = 0.35f))
+                            Spacer(modifier = Modifier.height(2.dp))
+
+                            ListItem(
+                                headlineContent = {
+                                    Text(
+                                        text = "Use SSE transport",
+                                        color = onSurface,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                },
+                                supportingContent = {
+                                    Text(
+                                        text = "Beta: detects session SSE flag or gateway stream on the server. Falls back to polling if neither is available.",
+                                        color = onSurfaceVar,
+                                        style = MaterialTheme.typography.bodySmall
+                                    )
+                                },
+                                trailingContent = {
+                                    Switch(
+                                        checked = sseTransportEnabled,
+                                        onCheckedChange = onSetSseTransportEnabled,
+                                        colors = SwitchDefaults.colors(
+                                            checkedThumbColor = MaterialTheme.colorScheme.onPrimary,
+                                            checkedTrackColor = primaryColor,
+                                            uncheckedThumbColor = onSurfaceVar,
+                                            uncheckedTrackColor = surfaceVariant
+                                        )
+                                    )
+                                },
+                                colors = ListItemDefaults.colors(containerColor = surfaceColor),
+                                modifier = Modifier.clickable {
+                                    onSetSseTransportEnabled(!sseTransportEnabled)
+                                }
+                            )
+                            Text(
+                                text = "Checks server support when enabled. Set HERMES_WEBUI_SESSION_SSE_ENABLED=1 on the server for full session SSE.",
+                                color = onSurfaceVar.copy(alpha = 0.72f),
+                                style = MaterialTheme.typography.labelSmall
+                            )
+                            if (!sseSupportStatus.isNullOrBlank()) {
+                                val isFeatureDisabled = sseSupportStatus.startsWith("🚫")
+                                val statusColor = when {
+                                    sseSupportStatus.startsWith("✅") -> Color(0xFF4CAF50)
+                                    sseSupportStatus.startsWith("⚡") -> Color(0xFFFFA726)
+                                    isFeatureDisabled -> MaterialTheme.colorScheme.error
+                                    sseSupportStatus.startsWith("❌") -> MaterialTheme.colorScheme.error
+                                    else -> onSurfaceVar.copy(alpha = 0.72f)
+                                }
+                                Text(
+                                    text = sseSupportStatus,
+                                    color = statusColor,
+                                    style = MaterialTheme.typography.labelSmall
+                                )
+                                // When the server returned 404 (feature flag not set), show a
+                                // copy-to-clipboard button so the user can paste the enable
+                                // prompt straight into Hermes chat.
+                                if (isFeatureDisabled) {
+                                    val clipboardManager = LocalClipboardManager.current
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    OutlinedButton(
+                                        onClick = {
+                                            clipboardManager.setText(
+                                                AnnotatedString(HermesApiClient.SSE_ENABLE_HERMES_PROMPT)
+                                            )
+                                        },
+                                        modifier = Modifier.fillMaxWidth(),
+                                        border = androidx.compose.foundation.BorderStroke(
+                                            1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.6f)
+                                        )
+                                    ) {
+                                        Text(
+                                            "📋  Copy enable-SSE prompt for Hermes",
+                                            color = MaterialTheme.colorScheme.error,
+                                            style = MaterialTheme.typography.bodySmall
+                                        )
+                                    }
+                                    Text(
+                                        text = "Paste this into the Hermes chat to ask it to set the flag and restart.",
+                                        color = onSurfaceVar.copy(alpha = 0.65f),
+                                        style = MaterialTheme.typography.labelSmall
+                                    )
+                                }
+                            }
                         }
-                    )
+                    }
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))
@@ -409,6 +573,102 @@ fun SettingsScreen(
                         colors = ListItemDefaults.colors(containerColor = surfaceColor),
                         modifier = Modifier.clickable { showResetSessionConfirm = true }
                     )
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // ── Troubleshooting ────────────────────────────────────────
+                SectionHeader("Troubleshooting")
+
+                Box(
+                    modifier = Modifier
+                        .padding(horizontal = 12.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(surfaceColor)
+                        .fillMaxWidth()
+                ) {
+                    Column {
+                        ListItem(
+                            headlineContent = {
+                                Text(
+                                    "CAPTURE DEBUG LOGS",
+                                    color = MaterialTheme.colorScheme.error,
+                                    fontWeight = FontWeight.Bold,
+                                    style = MaterialTheme.typography.titleMedium
+                                )
+                            },
+                            supportingContent = {
+                                Text(
+                                    "Persistent notification stays visible while capture runs. Use Stop on notification to end capture.",
+                                    color = onSurfaceVar,
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                            },
+                            trailingContent = {
+                                Switch(
+                                    checked = debugLoggingEnabled,
+                                    onCheckedChange = onSetDebugLoggingEnabled,
+                                    colors = SwitchDefaults.colors(
+                                        checkedThumbColor = MaterialTheme.colorScheme.onPrimary,
+                                        checkedTrackColor = MaterialTheme.colorScheme.error,
+                                        uncheckedThumbColor = onSurfaceVar,
+                                        uncheckedTrackColor = surfaceVariant
+                                    )
+                                )
+                            },
+                            colors = ListItemDefaults.colors(containerColor = surfaceColor),
+                            modifier = Modifier.clickable {
+                                onSetDebugLoggingEnabled(!debugLoggingEnabled)
+                            }
+                        )
+
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 8.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text(
+                                text = "Troubleshooting actions",
+                                color = onSurfaceVar,
+                                style = MaterialTheme.typography.labelSmall
+                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                TextButton(
+                                    onClick = onShareDebugLog,
+                                    modifier = Modifier.weight(1f),
+                                    border = androidx.compose.foundation.BorderStroke(
+                                        1.dp, onSurfaceVar.copy(alpha = 0.4f)
+                                    )
+                                ) { Text("Share/email log") }
+                                TextButton(
+                                    onClick = onDownloadDebugLog,
+                                    modifier = Modifier.weight(1f),
+                                    border = androidx.compose.foundation.BorderStroke(
+                                        1.dp, onSurfaceVar.copy(alpha = 0.4f)
+                                    )
+                                ) { Text("Download log") }
+                            }
+                            androidx.compose.material3.OutlinedButton(
+                                onClick = onViewGithubIssues,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text("🔍  View existing issues  — is anyone else seeing this?")
+                            }
+                            Button(
+                                onClick = onNewGithubIssue,
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = MaterialTheme.colorScheme.error
+                                )
+                            ) {
+                                Text("🏆  New Achievement!  You found a bug!  Report it →")
+                            }
+                        }
+                    }
                 }
 
                 Spacer(modifier = Modifier.height(32.dp))
@@ -516,20 +776,6 @@ internal fun AddServerProfileDialog(
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 OutlinedTextField(
-                    value = profileName,
-                    onValueChange = { profileName = it },
-                    label = { Text("Server name (optional)") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                    supportingText = {
-                        Text(
-                            if (isDuplicateName) "A server with this name already exists"
-                            else "Optional friendly name"
-                        )
-                    },
-                    isError = isDuplicateName
-                )
-                OutlinedTextField(
                     value = profileUrl,
                     onValueChange = { profileUrl = it },
                     label = { Text("Server URL") },
@@ -544,6 +790,20 @@ internal fun AddServerProfileDialog(
                         )
                     },
                     isError = (!isValidUrl && trimmedUrl.isNotBlank()) || isDuplicateUrl
+                )
+                OutlinedTextField(
+                    value = profileName,
+                    onValueChange = { profileName = it },
+                    label = { Text("Server name (optional)") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    supportingText = {
+                        Text(
+                            if (isDuplicateName) "A server with this name already exists"
+                            else "Optional friendly name"
+                        )
+                    },
+                    isError = isDuplicateName
                 )
             }
         },

@@ -30,7 +30,7 @@ class SettingsRepository(context: Context) : SettingsStore {
 
     private fun runMigration() {
         val lastMigrationVersion = sharedPreferences.getInt(KEY_LAST_MIGRATION_VERSION, 0)
-        val currentMigrationVersion = 3 // Increment this when adding new migrations
+        val currentMigrationVersion = 6 // Increment this when adding new migrations
 
         if (lastMigrationVersion < 1) {
             // Migration 1: Clear dashboard URLs from pre-0.1.5 versions
@@ -53,6 +53,29 @@ class SettingsRepository(context: Context) : SettingsStore {
             // Migration 3: Default background reconnect notification to opt-in (disabled)
             if (!sharedPreferences.contains(KEY_BACKGROUND_RECONNECT_ENABLED)) {
                 sharedPreferences.edit { putBoolean(KEY_BACKGROUND_RECONNECT_ENABLED, false) }
+            }
+        }
+
+        if (lastMigrationVersion < 4) {
+            // Migration 4: Seed reconnect polling interval preference.
+            if (!sharedPreferences.contains(KEY_RECONNECT_POLL_INTERVAL_SECONDS)) {
+                sharedPreferences.edit {
+                    putInt(KEY_RECONNECT_POLL_INTERVAL_SECONDS, DEFAULT_RECONNECT_POLL_INTERVAL_SECONDS)
+                }
+            }
+        }
+
+        if (lastMigrationVersion < 5) {
+            // Migration 5: Debug logging capture defaults to disabled.
+            if (!sharedPreferences.contains(KEY_DEBUG_LOGGING_ENABLED)) {
+                sharedPreferences.edit { putBoolean(KEY_DEBUG_LOGGING_ENABLED, false) }
+            }
+        }
+
+        if (lastMigrationVersion < 6) {
+            // Migration 6: SSE transport defaults to disabled until server support is verified.
+            if (!sharedPreferences.contains(KEY_SSE_TRANSPORT_ENABLED)) {
+                sharedPreferences.edit { putBoolean(KEY_SSE_TRANSPORT_ENABLED, false) }
             }
         }
 
@@ -119,6 +142,33 @@ class SettingsRepository(context: Context) : SettingsStore {
         sharedPreferences.edit { putBoolean(KEY_BACKGROUND_RECONNECT_ENABLED, enabled) }
     }
 
+    fun getReconnectPollIntervalSeconds(): Int {
+        return sharedPreferences
+            .getInt(KEY_RECONNECT_POLL_INTERVAL_SECONDS, DEFAULT_RECONNECT_POLL_INTERVAL_SECONDS)
+            .coerceIn(MIN_RECONNECT_POLL_INTERVAL_SECONDS, MAX_RECONNECT_POLL_INTERVAL_SECONDS)
+    }
+
+    fun setReconnectPollIntervalSeconds(seconds: Int) {
+        val clamped = seconds.coerceIn(MIN_RECONNECT_POLL_INTERVAL_SECONDS, MAX_RECONNECT_POLL_INTERVAL_SECONDS)
+        sharedPreferences.edit { putInt(KEY_RECONNECT_POLL_INTERVAL_SECONDS, clamped) }
+    }
+
+    fun isDebugLoggingEnabled(): Boolean {
+        return sharedPreferences.getBoolean(KEY_DEBUG_LOGGING_ENABLED, false)
+    }
+
+    fun setDebugLoggingEnabled(enabled: Boolean) {
+        sharedPreferences.edit { putBoolean(KEY_DEBUG_LOGGING_ENABLED, enabled) }
+    }
+
+    fun isSseTransportEnabled(): Boolean {
+        return sharedPreferences.getBoolean(KEY_SSE_TRANSPORT_ENABLED, false)
+    }
+
+    fun setSseTransportEnabled(enabled: Boolean) {
+        sharedPreferences.edit { putBoolean(KEY_SSE_TRANSPORT_ENABLED, enabled) }
+    }
+
     override fun saveLastLoadedUrl(url: String) {
         sharedPreferences.edit { putString(KEY_LAST_URL, url) }
     }
@@ -127,8 +177,25 @@ class SettingsRepository(context: Context) : SettingsStore {
 
     // Server Profile CRUD operations
     fun addProfile(name: String, url: String): ServerProfile {
-        val profile = ServerProfile(name = name, url = url, isActive = false)
         val profiles = getProfiles().toMutableList()
+
+        // Fresh installs can have a configured server URL but no profile rows yet.
+        // Seed that current server as the first active profile so adding another server
+        // does not make the original appear to disappear.
+        if (profiles.isEmpty()) {
+            val currentUrl = sharedPreferences.getString(KEY_SERVER_URL, null)?.trim().orEmpty()
+            if (currentUrl.isNotBlank() && normalizeProfileUrl(currentUrl) != normalizeProfileUrl(url)) {
+                val currentProfile = ServerProfile(
+                    name = "Current server",
+                    url = currentUrl,
+                    isActive = true
+                )
+                profiles.add(currentProfile)
+                setActiveProfile(currentProfile.id)
+            }
+        }
+
+        val profile = ServerProfile(name = name, url = url, isActive = false)
         profiles.add(profile)
         saveProfiles(profiles)
         return profile
@@ -206,6 +273,10 @@ class SettingsRepository(context: Context) : SettingsStore {
         sharedPreferences.edit { putString(KEY_SERVER_PROFILES, jsonArray.toString()) }
     }
 
+    private fun normalizeProfileUrl(url: String): String {
+        return url.trim().trimEnd('/').lowercase()
+    }
+
     companion object {
         private const val FILE_NAME = "hermes_secure_prefs"
         private const val KEY_SERVER_URL = "server_url"
@@ -216,7 +287,13 @@ class SettingsRepository(context: Context) : SettingsStore {
         private const val KEY_IS_CONFIGURED = "is_configured"
         private const val KEY_NOTIFICATION_PERMISSION_REQUESTED = "notification_permission_requested"
         private const val KEY_BACKGROUND_RECONNECT_ENABLED = "background_reconnect_enabled"
+        private const val KEY_RECONNECT_POLL_INTERVAL_SECONDS = "reconnect_poll_interval_seconds"
+        private const val KEY_DEBUG_LOGGING_ENABLED = "debug_logging_enabled"
+        private const val KEY_SSE_TRANSPORT_ENABLED = "sse_transport_enabled"
         private const val KEY_LAST_MIGRATION_VERSION = "last_migration_version"
+        private const val DEFAULT_RECONNECT_POLL_INTERVAL_SECONDS = 1
+        private const val MIN_RECONNECT_POLL_INTERVAL_SECONDS = 1
+        private const val MAX_RECONNECT_POLL_INTERVAL_SECONDS = 10
         // Profile-related keys
         private const val KEY_SERVER_PROFILES = "server_profiles"
         private const val KEY_ACTIVE_PROFILE_ID = "active_profile_id"

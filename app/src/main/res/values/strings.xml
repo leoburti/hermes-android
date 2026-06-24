@@ -3,7 +3,14 @@
     <string name="default_server_url">https://hermes.example.com</string>
     <string name="default_dashboard_url"></string>
     <string name="action_edit_server_url">Edit server URL</string>
-    <string name="reconnect_notification_title">Reconnecting to Hermes</string>
-    <string name="reconnect_notification_body">Trying to restore your Hermes connection in the background</string>
-    <string name="reconnect_notification_body_with_server">Trying to restore your connection to %1$s in the background</string>
+    <string name="reconnect_notification_title">Hermes is running in the background</string>
+    <plurals name="reconnect_notification_body_polling_interval">
+        <item quantity="one">Pinging the server every %1$d second to stay alive.</item>
+        <item quantity="other">Pinging the server every %1$d seconds to stay alive.</item>
+    </plurals>
+    <string name="debug_logging_channel_name">Hermes debug logging</string>
+    <string name="debug_logging_channel_description">Persistent troubleshooting capture for Hermes Android behavior</string>
+    <string name="debug_logging_notification_title">Debug logging is running</string>
+    <string name="debug_logging_notification_body">Capturing troubleshooting logs in the background. Tap Stop to end capture.</string>
+    <string name="debug_logging_notification_stop_action">Stop</string>
 </resources>

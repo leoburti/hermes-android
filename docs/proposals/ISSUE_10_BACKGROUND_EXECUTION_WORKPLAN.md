@@ -17,7 +17,11 @@ surface and source of conversation behavior.
 
 - Stage 0 is in progress (discovery + contract decisions).
 - Stage 1 / Part A is complete: lifecycle signal plumbing, reconnect UX polish, a bounded background reconnect hold, tests, and docs updates have landed on `issue-10-background-continuity-plan`.
-- Stage 2/3 implementation has not started yet.
+- Stage 2 / Part B is in progress:
+  - B1 complete: manifest + foreground-service skeleton + baseline reconnect notification.
+  - B2 complete: opt-in background reconnect toggle, encrypted persistence migration, and native settings page integration.
+  - B3 blocked pending Hermes WebUI session-scoped SSE summary contract.
+  - B4 can proceed in parallel (lifecycle start/stop hardening + regression validation).
 
 ## Outcome targets
 
@@ -132,6 +136,9 @@ Acceptance:
   - deep-link tap routing from notification
   - allowlist rejection paths
   - service start/stop behavior across app foreground/background transitions
+  - settings controls: background reconnect toggle persists across app restart
+  - settings controls: reconnect polling interval slider persists and applies bounded cadence (1-10 s)
+  - settings controls: disabled SSE transport switch remains non-interactive and shows "pending WebUI contract" helper copy
 - Device checks:
   - Android 13+ notification runtime permission path
   - Android 14+ foreground service behavior
@@ -140,18 +147,27 @@ Acceptance:
 ## Suggested implementation order
 
 1. Ship Stage 1 first (fast UX win, low risk).
-2. Start Stage 2 only after Stage 0 API/auth decisions are confirmed.
-3. Keep Stage 2 behind opt-in setting until field behavior is stable.
+2. Continue Stage 2 platform-only slices (B1/B2/B4) behind opt-in setting while Stage 0 API/auth work is finalized.
+3. Start Stage 2 B3 only after the SSE/API contract is approved and testable.
 4. Defer Stage 3 until Stage 2 telemetry/manual validation is healthy.
+
+## In-the-meantime implementation scope (while SSE contract is in progress)
+
+- B4.1 lifecycle hardening: ensure reconnect polling is canceled whenever app is backgrounded without an active foreground-service hold (toggle off, trust failure, or reconnect ended).
+- B4.2 service/state parity: verify service start/stop is fully derived from (`activityVisible`, `isReconnecting`, `backgroundReconnectEnabled`) and does not drift across rapid app switches.
+- B4.3 regression tests: add coverage for toggle-on/off transitions during reconnect and quick foreground/background oscillation. (Initial unit coverage for reconnect keep-alive policy is in place; expand with lifecycle-focused cases.)
+- B4.4 docs/status: keep this workplan + roadmap aligned with staged delivery and explicit B3 dependency on SSE contract.
+- B4.5 transport preference UX: expose SSE transport toggle in native settings as beta, verify server support on enable, and fail closed back to polling when unsupported.
 
 ## Task checklist for this branch family
 
 - [ ] Finalize API/auth contract notes for background activity feed.
 - [x] Implement Part A lifecycle/resume polish.
 - [x] Add tests for resume/retry transitions.
-- [ ] Add foreground service scaffold + manifest permissions for Part B.
-- [ ] Add settings toggle + migration for Part B.
-- [ ] Implement ongoing notification updates from activity feed.
+- [x] Add foreground service scaffold + manifest permissions for Part B.
+- [x] Add settings toggle + migration for Part B.
+- [ ] Implement ongoing notification updates from activity feed (B3, blocked on SSE contract).
 - [ ] Validate tap deep-link routing and trust checks.
+- [~] Lifecycle stop/start hardening + regression validation (B4, in progress).
 - [ ] Document rollout and default behavior decisions.
 

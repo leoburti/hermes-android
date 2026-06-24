@@ -12,16 +12,15 @@ import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import com.hermeswebui.android.MainActivity
 import com.hermeswebui.android.R
-import com.hermeswebui.android.core.security.UrlOrigins
 
 class HermesReconnectService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        val serverLabel = intent?.getStringExtra(EXTRA_SERVER_LABEL)
-            ?.takeIf { it.isNotBlank() }
-            ?: getString(R.string.app_name)
-        val notification = buildNotification(serverLabel)
+        val pollIntervalSeconds = intent
+            ?.getIntExtra(EXTRA_POLL_INTERVAL_SECONDS, DEFAULT_POLL_INTERVAL_SECONDS)
+            ?: DEFAULT_POLL_INTERVAL_SECONDS
+        val notification = buildNotification(pollIntervalSeconds)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             startForeground(
                 RECONNECT_NOTIFICATION_ID,
@@ -39,7 +38,7 @@ class HermesReconnectService : Service() {
         super.onDestroy()
     }
 
-    private fun buildNotification(serverLabel: String): Notification {
+    private fun buildNotification(pollIntervalSeconds: Int): Notification {
         val launchIntent = Intent(this, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
         }
@@ -49,11 +48,12 @@ class HermesReconnectService : Service() {
             launchIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
-        val contentText = if (serverLabel == getString(R.string.app_name)) {
-            getString(R.string.reconnect_notification_body)
-        } else {
-            getString(R.string.reconnect_notification_body_with_server, serverLabel)
-        }
+        val normalizedInterval = pollIntervalSeconds.coerceAtLeast(1)
+        val contentText = resources.getQuantityString(
+            R.plurals.reconnect_notification_body_polling_interval,
+            normalizedInterval,
+            normalizedInterval
+        )
 
         return NotificationCompat.Builder(this, HERMES_NOTIFICATION_CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notification)
@@ -70,14 +70,14 @@ class HermesReconnectService : Service() {
     }
 
     companion object {
-        private const val EXTRA_SERVER_LABEL = "extra.SERVER_LABEL"
+        private const val EXTRA_POLL_INTERVAL_SECONDS = "extra.POLL_INTERVAL_SECONDS"
         private const val HERMES_NOTIFICATION_CHANNEL_ID = "hermes_webui_notifications"
         private const val RECONNECT_NOTIFICATION_ID = 20_001
+        private const val DEFAULT_POLL_INTERVAL_SECONDS = 1
 
-        fun start(context: Context, serverUrl: String) {
-            val serverLabel = UrlOrigins.hostFrom(serverUrl) ?: context.getString(R.string.app_name)
+        fun start(context: Context, pollIntervalSeconds: Int) {
             val intent = Intent(context, HermesReconnectService::class.java).apply {
-                putExtra(EXTRA_SERVER_LABEL, serverLabel)
+                putExtra(EXTRA_POLL_INTERVAL_SECONDS, pollIntervalSeconds.coerceAtLeast(1))
             }
             ContextCompat.startForegroundService(context, intent)
         }
