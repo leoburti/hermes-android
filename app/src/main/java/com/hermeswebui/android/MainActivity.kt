@@ -2126,8 +2126,22 @@ class MainActivity : ComponentActivity() {
             lastLoadedUrl ?: serverUrl
         }
 
-        validateServerBeforePersist(serverUrl, openSettingsOnFailure = true) {
-            webView.loadUrl(startUrl)
+        serverValidationJob?.cancel()
+        viewModel.setServerValidationState(
+            isChecking = true,
+            message = "Checking Hermes server readiness...",
+            isError = false
+        )
+        serverValidationJob = lifecycleScope.launch {
+            val result = HermesApiClient.checkServerReadiness(serverUrl)
+            if (result.isReady || HermesApiClient.isServerReachable(serverUrl)) {
+                viewModel.clearServerValidationState()
+                webView.loadUrl(startUrl)
+                return@launch
+            }
+
+            viewModel.openSettingsWithServerValidation(result.message)
+            Toast.makeText(this@MainActivity, result.message, Toast.LENGTH_LONG).show()
         }
     }
 
