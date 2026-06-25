@@ -94,14 +94,10 @@ jobs:
 
           release_notes="$(printf '%s\n' "$generated_notes" | sed "1s/^## What's Changed/## What's New/")"
           if ! printf '%s\n' "$release_notes" | grep -q '^## '; then
-            release_notes="## What's New
-
-$release_notes"
+            release_notes="$(printf "## What's New\n\n%s" "$release_notes")"
           fi
 
-          cat > build/release/release-notes.md <<EOF
-          $release_notes
-          EOF
+          printf '%s\n' "$release_notes" > build/release/release-notes.md
 
           {
             echo "## Release diagnostics"
