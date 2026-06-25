@@ -38,12 +38,12 @@ To get added, **message [@Paladin173](https://github.com/Paladin173) your Gmail 
 
 Once added, the app will appear in the Play Store for you to install and receive automatic updates.
 
-Current pre-release version: `v0.1.12`.
+Current pre-release version: `v0.1.15`.
 
 Current Android build metadata:
 
-- Version name: `0.1.12`
-- Version code: `112` (derived from semantic version as `major*10000 + minor*100 + patch`)
+- Version name: `0.1.15`
+- Version code: `115` (derived from semantic version as `major*10000 + minor*100 + patch`)
 - Application ID: `com.hermeswebui.android`
 - Compile/target SDK: `37`
 
@@ -215,6 +215,7 @@ The workflow in `.github/workflows/1-orchestration-release.yml` can then:
 
 - build and sign one GitHub release APK with application ID `com.hermeswebui.android.github`
 - build and sign one Play release AAB with application ID `com.hermeswebui.android`
+- package release native debug symbol tables for Play Console crash and ANR symbolication
 - upload both files as workflow artifacts
 - fan out to separate GitHub and Play publishing jobs after the build succeeds
 - create or update a GitHub Release using the Gradle Android `versionName`

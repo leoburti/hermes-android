@@ -3,7 +3,7 @@
 > Maintenance-focused Android wrapper for Hermes Web UI. The core wrapper is
 > good as-is; product UI and workflow changes belong in Hermes WebUI.
 >
-> Last updated: 2026-06-24
+> Last updated: 2026-06-25
 
 ---
 
@@ -176,6 +176,8 @@ workflow changes should be made in Hermes WebUI instead.
 | REL-019 | 2026-06-24 | Release | Manual orchestration releases now auto-bump `appVersionName` from the latest published tag before building, and Gradle derives `versionCode` from semantic version to keep release numbering monotonic without separate manual edits |
 | REL-020 | 2026-06-24 | Release | Bumped Android app version metadata to `0.1.11` with derived `versionCode` `111` for the next GitHub + Play Store release |
 | REL-021 | 2026-06-24 | Release | Bumped Android app version metadata to `0.1.12` with derived `versionCode` `112` for the next device test and GitHub + Play Store release |
+| REL-022 | 2026-06-25 | Release | Updated checked-in Android app version metadata to match the currently published `0.1.15` / `versionCode` `115` release |
+| REL-023 | 2026-06-25 | Release | Enabled release native debug symbol table packaging so Play Console can symbolicate native crashes and ANRs from bundled native libraries |
 | A-010-P3 | 2026-06-24 | Lifecycle | Enabled native SSE-backed reconnect transport for Issue 10: Android now probes lightweight Hermes WebUI `/api/sessions/events` for reconnect detection when the SSE toggle is on, falls back to `/api/status` polling when the stream is unavailable, and updates SSE support messaging to match current WebUI probe semantics |
 | A-010-P4 | 2026-06-24 | Notifications | Extended the reconnect foreground service to consume authenticated Hermes WebUI `/api/session/stream` events for the active session when available, updating the ongoing background notification with summary/progress text and trusted tap targets instead of leaving it static |
 | A-010-P5 | 2026-06-24 | Notifications | Broadened Issue 10 Part B into an opt-in ongoing background activity notification: the foreground service can now stay alive for trusted session routes while the app is backgrounded, reflects approval/failure/completion SSE events in addition to summaries, and exposes a user-controlled lock-screen redaction toggle for notification body text |

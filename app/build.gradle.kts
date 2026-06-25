@@ -3,7 +3,7 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import java.io.File
 import java.util.Properties
 
-val appVersionName = "0.1.12"
+val appVersionName = "0.1.15"
 val appVersionCode = run {
     val semver = Regex("^(\\d+)\\.(\\d+)\\.(\\d+)$")
         .matchEntire(appVersionName)
@@ -114,6 +114,9 @@ extensions.configure<ApplicationExtension>("android") {
         release {
             isMinifyEnabled = true
             isShrinkResources = true
+            ndk {
+                debugSymbolLevel = "SYMBOL_TABLE"
+            }
             if (releaseSigningConfigured) {
                 signingConfig = signingConfigs.getByName("release")
             }
