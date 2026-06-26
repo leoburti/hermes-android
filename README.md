@@ -38,12 +38,12 @@ To get added, **message [@Paladin173](https://github.com/Paladin173) your Gmail 
 
 Once added, the app will appear in the Play Store for you to install and receive automatic updates.
 
-Current pre-release version: `v0.1.18`.
+Current pre-release version: `v0.1.19`.
 
 Current Android build metadata:
 
-- Version name: `0.1.18`
-- Version code: `118` (derived from semantic version as `major*10000 + minor*100 + patch`)
+- Version name: `0.1.19`
+- Version code: `119` (derived from semantic version as `major*10000 + minor*100 + patch`)
 - Application ID: `com.hermeswebui.android`
 - Compile/target SDK: `37`
 
