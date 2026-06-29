@@ -246,8 +246,8 @@ Google Play listing assets:
 
 - `play-store/icon-512.png` - 512x512 high-res app icon for Play Console store listing (opaque PNG)
 - `play-store/icon-512.svg` - editable vector source used for Play listing export
-- `tools/generate_play_store_icon.py` - regenerates both files from the launcher vector geometry
-- `tools/requirements-play-icon.txt` - Python dependency list for icon generation script
+- `tools/generate_play_store_icon.py` - regenerates both files from the current Hermes WebUI brand SVG source
+- `tools/requirements-play-icon.txt` - Python dependency list for the Play icon generation script
 
 Release artifact naming:
 

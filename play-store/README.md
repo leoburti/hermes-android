@@ -10,4 +10,7 @@ py -3 -m pip install --user -r .\tools\requirements-play-icon.txt
 py -3 .\tools\generate_play_store_icon.py
 ```
 
+The generator writes the current Hermes WebUI brand mark into both the editable
+SVG source and the exported Play Console PNG.
+
 
