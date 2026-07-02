@@ -44,6 +44,7 @@ class MainViewModel(
         reconnectPollIntervalSeconds = settingsRepositoryImpl?.getReconnectPollIntervalSeconds() ?: 1,
         sseTransportEnabled = settingsRepositoryImpl?.isSseTransportEnabled() ?: false,
         debugLoggingEnabled = settingsRepositoryImpl?.isDebugLoggingEnabled() ?: false,
+        blockScreenshotsEnabled = settingsRepositoryImpl?.isBlockScreenshotsEnabled() ?: false,
         appUpdateAlertsEnabled = settingsRepositoryImpl?.isAppUpdateAlertsEnabled() ?: false,
         automaticAppUpdateChecksEnabled = settingsRepositoryImpl?.isAutomaticAppUpdateChecksEnabled() ?: false
     ))
@@ -413,6 +414,16 @@ class MainViewModel(
         _uiState.update { it.copy(debugLoggingEnabled = enabled) }
     }
 
+    fun setBlockScreenshotsEnabled(enabled: Boolean) {
+        settingsRepositoryImpl?.setBlockScreenshotsEnabled(enabled)
+        _uiState.update { it.copy(blockScreenshotsEnabled = enabled) }
+    }
+
+    fun setOAuthInFlowHost(host: String?) {
+        if (_uiState.value.oauthInFlowHost == host) return
+        _uiState.update { it.copy(oauthInFlowHost = host) }
+    }
+
     fun setAppUpdateAlertsEnabled(enabled: Boolean) {
         settingsRepositoryImpl?.setAppUpdateAlertsEnabled(enabled)
         _uiState.update { it.copy(appUpdateAlertsEnabled = enabled) }
@@ -476,6 +487,7 @@ class MainViewModel(
                 reconnectPollIntervalSeconds = repo.getReconnectPollIntervalSeconds(),
                 sseTransportEnabled = repo.isSseTransportEnabled(),
                 debugLoggingEnabled = repo.isDebugLoggingEnabled(),
+                blockScreenshotsEnabled = repo.isBlockScreenshotsEnabled(),
                 appUpdateAlertsEnabled = repo.isAppUpdateAlertsEnabled(),
                 automaticAppUpdateChecksEnabled = repo.isAutomaticAppUpdateChecksEnabled()
             )

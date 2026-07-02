@@ -190,6 +190,14 @@ class SettingsRepository(context: Context) : SettingsStore {
         sharedPreferences.edit { putBoolean(KEY_SSE_TRANSPORT_ENABLED, enabled) }
     }
 
+    fun isBlockScreenshotsEnabled(): Boolean {
+        return sharedPreferences.getBoolean(KEY_BLOCK_SCREENSHOTS_ENABLED, false)
+    }
+
+    fun setBlockScreenshotsEnabled(enabled: Boolean) {
+        sharedPreferences.edit { putBoolean(KEY_BLOCK_SCREENSHOTS_ENABLED, enabled) }
+    }
+
     fun isBackgroundActivityFullTextEnabled(): Boolean {
         return sharedPreferences.getBoolean(KEY_BACKGROUND_ACTIVITY_FULL_TEXT_ENABLED, false)
     }
@@ -333,29 +341,15 @@ class SettingsRepository(context: Context) : SettingsStore {
     }
 
     fun getProfiles(): List<ServerProfile> {
-        val json = sharedPreferences.getString(KEY_SERVER_PROFILES, "[]") ?: "[]"
         // KEY_ACTIVE_PROFILE_ID is the single source of truth for which profile is active.
         // setActiveProfile() only updates that key (not the per-row isActive boolean in the JSON),
         // so deriving isActive from the persisted boolean let a stale profile look active after a
-        // switch. Compute isActive from the key here instead. (Both creation paths already set the
-        // key alongside the profile, so nothing that is active can be missing from it.)
-        val activeId = sharedPreferences.getString(KEY_ACTIVE_PROFILE_ID, null)
-        return try {
-            val jsonArray = JSONArray(json)
-            (0 until jsonArray.length()).map { index ->
-                val obj = jsonArray.getJSONObject(index)
-                val id = obj.getString("id")
-                ServerProfile(
-                    id = id,
-                    name = obj.getString("name"),
-                    url = obj.getString("url"),
-                    createdAt = obj.getLong("createdAt"),
-                    isActive = id == activeId
-                )
-            }
-        } catch (e: Exception) {
-            emptyList()
-        }
+        // switch. parseProfiles() computes isActive from the key. (Both creation paths already set
+        // the key alongside the profile, so nothing that is active can be missing from it.)
+        return parseProfiles(
+            json = sharedPreferences.getString(KEY_SERVER_PROFILES, "[]"),
+            activeId = sharedPreferences.getString(KEY_ACTIVE_PROFILE_ID, null)
+        )
     }
 
     fun setActiveProfile(profileId: String) {
@@ -399,6 +393,7 @@ class SettingsRepository(context: Context) : SettingsStore {
         private const val KEY_RECONNECT_POLL_INTERVAL_SECONDS = "reconnect_poll_interval_seconds"
         private const val KEY_DEBUG_LOGGING_ENABLED = "debug_logging_enabled"
         private const val KEY_SSE_TRANSPORT_ENABLED = "sse_transport_enabled"
+        private const val KEY_BLOCK_SCREENSHOTS_ENABLED = "block_screenshots_enabled"
         private const val KEY_BACKGROUND_ACTIVITY_FULL_TEXT_ENABLED = "background_activity_full_text_enabled"
         private const val KEY_APP_UPDATE_ALERTS_ENABLED = "app_update_alerts_enabled"
         private const val KEY_AUTOMATIC_APP_UPDATE_CHECKS_ENABLED = "automatic_app_update_checks_enabled"
@@ -413,5 +408,29 @@ class SettingsRepository(context: Context) : SettingsStore {
         // Profile-related keys
         private const val KEY_SERVER_PROFILES = "server_profiles"
         private const val KEY_ACTIVE_PROFILE_ID = "active_profile_id"
+
+        /**
+         * Parse the persisted profiles JSON, deriving `isActive` from the active-profile id (the
+         * single source of truth) rather than the per-row persisted boolean. Pure so it is
+         * unit-testable without EncryptedSharedPreferences.
+         */
+        internal fun parseProfiles(json: String?, activeId: String?): List<ServerProfile> {
+            return try {
+                val jsonArray = JSONArray(json ?: "[]")
+                (0 until jsonArray.length()).map { index ->
+                    val obj = jsonArray.getJSONObject(index)
+                    val id = obj.getString("id")
+                    ServerProfile(
+                        id = id,
+                        name = obj.getString("name"),
+                        url = obj.getString("url"),
+                        createdAt = obj.getLong("createdAt"),
+                        isActive = id == activeId
+                    )
+                }
+            } catch (e: Exception) {
+                emptyList()
+            }
+        }
     }
 }

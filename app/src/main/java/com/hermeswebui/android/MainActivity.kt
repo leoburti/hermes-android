@@ -20,6 +20,7 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Environment
 import android.os.Message
+import android.view.WindowManager
 import android.webkit.CookieManager
 import android.webkit.DownloadListener
 import android.webkit.PermissionRequest
@@ -33,6 +34,7 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
 import android.webkit.WebStorage
+import android.webkit.WebViewDatabase
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.Toast
@@ -54,7 +56,12 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.unit.dp
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
@@ -101,6 +108,7 @@ import com.hermeswebui.android.ui.DebugLogFloatingOverlay
 import com.hermeswebui.android.ui.settings.SettingsScreen
 import com.hermeswebui.android.ui.web.WebShell
 import com.hermeswebui.android.update.AppUpdateCheckResult
+import com.hermeswebui.android.update.AppUpdateDownloadPolicy
 import com.hermeswebui.android.update.GitHubReleaseUpdateChecker
 import com.google.android.play.core.appupdate.AppUpdateInfo
 import com.google.android.play.core.appupdate.AppUpdateManager
@@ -727,6 +735,7 @@ class MainActivity : ComponentActivity() {
             settingsRepository.setDebugLoggingEnabled(true)
             viewModel.setDebugLoggingEnabled(true)
         }
+        applyScreenshotSecurity(settingsRepository.isBlockScreenshotsEnabled())
         webView = buildWebView()
         installHermesWebUiDocumentStartFixes(webView, viewModel.uiState.value.settings.serverUrl)
 
@@ -933,6 +942,26 @@ class MainActivity : ComponentActivity() {
                             onBack = if (webView.canGoBack()) {{ webView.goBack() }} else null
                         )
                         SnackbarHost(hostState = snackbarHostState)
+
+                        // Anti-phishing chip: shows the current host while an in-app OAuth flow is
+                        // on a non-allowlisted origin, since the WebView has no URL bar.
+                        uiState.oauthInFlowHost?.let { host ->
+                            Surface(
+                                modifier = Modifier
+                                    .align(Alignment.TopCenter)
+                                    .padding(top = 8.dp),
+                                shape = RoundedCornerShape(50),
+                                color = MaterialTheme.colorScheme.errorContainer,
+                                tonalElevation = 4.dp
+                            ) {
+                                Text(
+                                    text = "🔒 Signing in on $host",
+                                    color = MaterialTheme.colorScheme.onErrorContainer,
+                                    style = MaterialTheme.typography.labelMedium,
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                                )
+                            }
+                        }
                     }
                 }
 
@@ -946,6 +975,7 @@ class MainActivity : ComponentActivity() {
                     sseTransportEnabled = uiState.sseTransportEnabled,
                     sseSupportStatus = uiState.sseSupportStatus,
                     debugLoggingEnabled = uiState.debugLoggingEnabled,
+                    blockScreenshotsEnabled = uiState.blockScreenshotsEnabled,
                     appUpdateAlertsEnabled = uiState.appUpdateAlertsEnabled,
                     automaticAppUpdateChecksEnabled = uiState.automaticAppUpdateChecksEnabled,
                     appUpdateChannelLabel = appUpdateChannelLabel(),
@@ -988,6 +1018,10 @@ class MainActivity : ComponentActivity() {
                         }
                         viewModel.setDebugLoggingEnabled(enabled)
                         syncDebugLoggingForegroundService(enabled)
+                    },
+                    onSetBlockScreenshotsEnabled = { enabled ->
+                        viewModel.setBlockScreenshotsEnabled(enabled)
+                        applyScreenshotSecurity(enabled)
                     },
                     onSetAppUpdateAlertsEnabled = { enabled ->
                         if (enabled) {
@@ -1256,6 +1290,7 @@ class MainActivity : ComponentActivity() {
                             parseTrustedOAuthStart(url)?.let { rememberActiveMainFrameOAuth(it) }
                         }
                     }
+                    updateOAuthInFlowHost(url)
                     viewModel.onPageStarted(url)
                 }
 
@@ -1801,23 +1836,15 @@ class MainActivity : ComponentActivity() {
 
     private fun downloadGitHubUpdate(downloadUrl: String?, fileName: String?) {
         val url = downloadUrl?.trim().orEmpty()
-        val parsed = runCatching { Uri.parse(url) }.getOrNull()
         // MainActivity is exported, so the DOWNLOAD_APP_UPDATE intent (and its download URL) can be
-        // sent by any installed app. GitHub Release APK assets are only ever served from github.com
-        // (browser_download_url) and its *.githubusercontent.com asset CDN, so confine the download
-        // host to that set. Without this, https + ".apk" alone let a third-party app drive this
-        // component into enqueueing an attacker-hosted APK.
-        val host = UrlOrigins.hostFrom(url)
-        if (
-            parsed == null ||
-            parsed.scheme != "https" ||
-            host == null ||
-            !isTrustedApkDownloadHost(host) ||
-            !url.endsWith(".apk", ignoreCase = true)
-        ) {
+        // sent by any installed app. AppUpdateDownloadPolicy confines the download to https `.apk`
+        // assets on GitHub's release hosts so a third-party app cannot drive this component into
+        // enqueueing an attacker-hosted APK.
+        if (!AppUpdateDownloadPolicy.isTrustedApkDownloadUrl(url)) {
             Toast.makeText(this, "No GitHub APK download is available", Toast.LENGTH_LONG).show()
             return
         }
+        val parsed = Uri.parse(url)
 
         val safeFileName = fileName
             ?.trim()
@@ -1837,16 +1864,6 @@ class MainActivity : ComponentActivity() {
         }
         getSystemService(DownloadManager::class.java).enqueue(request)
         Toast.makeText(this, "GitHub APK download started", Toast.LENGTH_SHORT).show()
-    }
-
-    /**
-     * GitHub Release APK assets are served only from github.com (the release `browser_download_url`)
-     * and its `*.githubusercontent.com` asset CDN. Confining the update download host to that set
-     * keeps the exported DOWNLOAD_APP_UPDATE path from being coerced into fetching an
-     * attacker-hosted APK.
-     */
-    private fun isTrustedApkDownloadHost(host: String): Boolean {
-        return host == "github.com" || host.endsWith(".githubusercontent.com")
     }
 
     @SuppressLint("MissingPermission")
@@ -2704,6 +2721,19 @@ class MainActivity : ComponentActivity() {
         ) { persist() }
     }
 
+    /**
+     * When enabled, mark the window FLAG_SECURE so the OS blocks screenshots/screen recording and
+     * shows a blank thumbnail in the app switcher — the last frame of an agent session (secrets,
+     * approvals, tool output) is not exposed. Opt-in via native settings.
+     */
+    private fun applyScreenshotSecurity(enabled: Boolean) {
+        if (enabled) {
+            window.setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE)
+        } else {
+            window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+        }
+    }
+
     private fun resetWebSession() {
         viewModel.resetSession()
         CookieManager.getInstance().removeAllCookies(null)
@@ -2712,6 +2742,9 @@ class MainActivity : ComponentActivity() {
         webView.clearHistory()
         webView.clearCache(true)
         webView.clearFormData()
+        // Also drop stored HTTP Basic/Digest credentials — otherwise a "reset web session"
+        // (sign out & wipe) still leaves saved auth behind on a shared device.
+        runCatching { WebViewDatabase.getInstance(this).clearHttpAuthUsernamePassword() }
         webView.loadUrl(viewModel.uiState.value.settings.serverUrl)
     }
 
@@ -3301,9 +3334,26 @@ class MainActivity : ComponentActivity() {
 
     private fun clearActiveMainFrameOAuth() {
         activeMainFrameOAuthFlow = null
+        viewModel.setOAuthInFlowHost(null)
         if (activeOAuthPopup == null) {
             oauthFlowTimeoutMs = 0L
         }
+    }
+
+    /**
+     * Anti-phishing chip source: while an in-app OAuth flow is active and the current page is a
+     * non-allowlisted origin (an external/self-hosted IdP rendered in the URL-bar-less WebView),
+     * surface the host so the user can see they left the Hermes origin. The residual in-app OAuth
+     * phishing surface (a non-allowlisted authorize host is intentionally allowed in-app for OIDC)
+     * is otherwise invisible without a URL bar.
+     */
+    private fun updateOAuthInFlowHost(url: String?) {
+        val host = if (activeMainFrameOAuthFlow != null && !url.isNullOrBlank() && !urlPolicy.isAllowed(url)) {
+            UrlOrigins.hostFrom(url)
+        } else {
+            null
+        }
+        viewModel.setOAuthInFlowHost(host)
     }
 
     private fun refreshActiveOAuthTimeout() {
