@@ -40,6 +40,16 @@ Object? _canonicalJsonValue(Object? value) {
 
 String _canonicalJson(Object? value) => jsonEncode(_canonicalJsonValue(value));
 
+class CreatedGatewaySession {
+  final String runtimeSessionId;
+  final String storedSessionId;
+
+  const CreatedGatewaySession({
+    required this.runtimeSessionId,
+    required this.storedSessionId,
+  });
+}
+
 /// A JSON-RPC error response from the gateway.
 class JsonRpcError implements Exception {
   final String method;
@@ -946,19 +956,35 @@ class WsClient {
     return result['result']?['session_id'] as String? ?? '';
   }
 
-  /// Resume an existing session via session.create (which starts a new
-  /// agent process for the given session ID). This works for sessions
-  /// that exist in the REST API but aren't active in the gateway.
-  Future<String> createOrResumeSession(String sessionId) async {
-    final result = await send('session.create', {'session_id': sessionId});
-    if (result['error'] != null) {
+  /// Create a new server-owned session after a resume reported that the
+  /// mobile placeholder does not exist yet. Hermes mints both the current
+  /// runtime ID and the durable ID used after reconnect.
+  Future<CreatedGatewaySession> createMobileSession() async {
+    final response = await send('session.create', {'source': 'mobile'});
+    if (response['error'] != null) {
       throw _gatewayResponseError(
         'session.create',
-        result['error'],
+        response['error'],
         fallbackMessage: 'Unknown error',
       );
     }
-    return result['result']?['session_id'] as String? ?? sessionId;
+    final result = response['result'];
+    final runtimeSessionId = result is Map
+        ? result['session_id']?.toString() ?? ''
+        : '';
+    final storedSessionId = result is Map
+        ? result['stored_session_id']?.toString() ?? ''
+        : '';
+    if (runtimeSessionId.isEmpty || storedSessionId.isEmpty) {
+      throw JsonRpcError(
+        'session.create',
+        'Gateway returned no durable session identity',
+      );
+    }
+    return CreatedGatewaySession(
+      runtimeSessionId: runtimeSessionId,
+      storedSessionId: storedSessionId,
+    );
   }
 
   /// Applies a model only to one live gateway session.  Hermes interprets the

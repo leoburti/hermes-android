@@ -2016,6 +2016,48 @@ void main() {
       }
     });
 
+    test(
+      'creates a missing mobile session without a client-selected session_id',
+      () async {
+        final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+        final requestSeen = Completer<Map<String, dynamic>>();
+        final socketSubscription = server
+            .transform(WebSocketTransformer())
+            .listen((socket) {
+              socket.listen((raw) {
+                final request =
+                    jsonDecode(raw as String) as Map<String, dynamic>;
+                requestSeen.complete(request);
+                socket.add(
+                  jsonEncode({
+                    'jsonrpc': '2.0',
+                    'id': request['id'],
+                    'result': {
+                      'session_id': 'server-runtime-123',
+                      'stored_session_id': 'server-stored-123',
+                    },
+                  }),
+                );
+              });
+            });
+        final client = WsClient('http://127.0.0.1:${server.port}');
+
+        try {
+          await client.connect();
+          final created = await client.createMobileSession();
+          expect(created.runtimeSessionId, 'server-runtime-123');
+          expect(created.storedSessionId, 'server-stored-123');
+          final request = await requestSeen.future;
+          expect(request['method'], 'session.create');
+          expect(request['params'], {'source': 'mobile'});
+        } finally {
+          client.close();
+          await socketSubscription.cancel();
+          await server.close(force: true);
+        }
+      },
+    );
+
     test('sends official session.title and session.branch frames', () async {
       final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
       final requests = <Map<String, dynamic>>[];

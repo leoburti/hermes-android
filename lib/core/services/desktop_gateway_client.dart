@@ -34,6 +34,10 @@ class DesktopGatewayClient {
   final String _documentProfile;
   WsClient? _ws;
   final Map<String, String> _gatewaySessionIds = {};
+  final Map<String, String> _storedSessionIds = {};
+  final Map<String, Future<_DesktopGatewaySession>> _sessionConnects = {};
+  final Set<WsClient> _pendingClients = {};
+  bool _closed = false;
   DesktopAsyncEventCallback? _asyncEventListener;
   DesktopConnectionCallback? _connectionListener;
   GatewayTurnCoordinatorRegistry? _turnCoordinatorRegistry;
@@ -148,7 +152,31 @@ class DesktopGatewayClient {
     );
   }
 
-  Future<_DesktopGatewaySession> _connect(String mobileSessionId) async {
+  void _requireOpen() {
+    if (_closed) throw StateError('Desktop gateway client is closed');
+  }
+
+  Future<_DesktopGatewaySession> _connect(String mobileSessionId) {
+    if (_closed) {
+      return Future.error(StateError('Desktop gateway client is closed'));
+    }
+    final pending = _sessionConnects[mobileSessionId];
+    if (pending != null) return pending;
+
+    late final Future<_DesktopGatewaySession> operation;
+    operation = _connectUnshared(mobileSessionId).whenComplete(() {
+      if (identical(_sessionConnects[mobileSessionId], operation)) {
+        _sessionConnects.remove(mobileSessionId);
+      }
+    });
+    _sessionConnects[mobileSessionId] = operation;
+    return operation;
+  }
+
+  Future<_DesktopGatewaySession> _connectUnshared(
+    String mobileSessionId,
+  ) async {
+    _requireOpen();
     final existing = _ws;
     if (existing != null && existing.isConnected) {
       final mappedSessionId = _gatewaySessionIds[mobileSessionId];
@@ -156,6 +184,7 @@ class DesktopGatewayClient {
         return _DesktopGatewaySession(existing, mappedSessionId);
       }
       final gatewaySessionId = await _resumeOrCreate(existing, mobileSessionId);
+      _requireOpen();
       _gatewaySessionIds[mobileSessionId] = gatewaySessionId;
       return _DesktopGatewaySession(existing, gatewaySessionId);
     }
@@ -168,7 +197,9 @@ class DesktopGatewayClient {
     existing?.close();
     _gatewaySessionIds.clear();
     final ticket = await _dashboard.mintWebSocketTicket();
+    _requireOpen();
     final client = WsClient(_baseUrl, ticket: ticket);
+    _pendingClients.add(client);
     _installAsyncEventBridge(client);
     client.onConnectionChanged = (connected) {
       if (connected) {
@@ -180,15 +211,20 @@ class DesktopGatewayClient {
     };
     try {
       await client.connect();
+      _requireOpen();
       _ws = client;
       final gatewaySessionId = await _resumeOrCreate(client, mobileSessionId);
+      _requireOpen();
       _gatewaySessionIds[mobileSessionId] = gatewaySessionId;
       return _DesktopGatewaySession(client, gatewaySessionId);
     } catch (_) {
       client.close();
       if (identical(_ws, client)) _ws = null;
       _connectionListener?.call(DesktopConnectionState.disconnected);
+      if (_closed) throw StateError('Desktop gateway client is closed');
       rethrow;
+    } finally {
+      _pendingClients.remove(client);
     }
   }
 
@@ -196,17 +232,25 @@ class DesktopGatewayClient {
     WsClient client,
     String mobileSessionId,
   ) async {
+    final resumeSessionId =
+        _storedSessionIds[mobileSessionId] ?? mobileSessionId;
     try {
-      return await client.resumeSession(mobileSessionId);
+      final runtimeSessionId = await client.resumeSession(resumeSessionId);
+      _requireOpen();
+      return runtimeSessionId;
     } on JsonRpcError catch (error) {
+      _requireOpen();
       if (error.code != 4007 &&
           !error.message.toLowerCase().contains('session not found')) {
         rethrow;
       }
-      // New mobile chats do not exist in Hermes yet. Create them with the
-      // mobile-generated ID so REST history and the Desktop runtime share one
-      // stable identity. Existing sessions always take the resume path.
-      return client.createOrResumeSession(mobileSessionId);
+      // New mobile chats do not exist in Hermes yet. Ask Hermes to mint both
+      // identities, retain the durable one across socket reconnections, and
+      // use the runtime one only on the current transport.
+      final created = await client.createMobileSession();
+      _requireOpen();
+      _storedSessionIds[mobileSessionId] = created.storedSessionId;
+      return created.runtimeSessionId;
     }
   }
 
@@ -236,6 +280,7 @@ class DesktopGatewayClient {
 
   /// Opens (or reuses) the gateway socket without binding it to a session.
   Future<WsClient> _connectControl() async {
+    _requireOpen();
     final existing = _ws;
     if (existing != null && existing.isConnected) return existing;
 
@@ -247,7 +292,9 @@ class DesktopGatewayClient {
     existing?.close();
     _gatewaySessionIds.clear();
     final ticket = await _dashboard.mintWebSocketTicket();
+    _requireOpen();
     final client = WsClient(_baseUrl, ticket: ticket);
+    _pendingClients.add(client);
     _installAsyncEventBridge(client);
     client.onConnectionChanged = (connected) {
       if (connected) {
@@ -259,13 +306,17 @@ class DesktopGatewayClient {
     };
     try {
       await client.connect();
+      _requireOpen();
       _ws = client;
       return client;
     } catch (_) {
       client.close();
       if (identical(_ws, client)) _ws = null;
       _connectionListener?.call(DesktopConnectionState.disconnected);
+      if (_closed) throw StateError('Desktop gateway client is closed');
       rethrow;
+    } finally {
+      _pendingClients.remove(client);
     }
   }
 
@@ -463,12 +514,20 @@ class DesktopGatewayClient {
   }
 
   void close() {
+    if (_closed) return;
+    _closed = true;
     _asyncEventListener = null;
     _connectionListener = null;
     _projects = null;
+    for (final client in _pendingClients.toList(growable: false)) {
+      client.close();
+    }
+    _pendingClients.clear();
     _ws?.close();
     _ws = null;
     _gatewaySessionIds.clear();
+    _storedSessionIds.clear();
+    _sessionConnects.clear();
     final turnCoordinatorRegistry = _turnCoordinatorRegistry;
     _turnCoordinatorRegistry = null;
     if (turnCoordinatorRegistry != null) {
